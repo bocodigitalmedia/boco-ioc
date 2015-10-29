@@ -2,7 +2,7 @@ describe "IOC", ->
   uuid = -> require('uuid').v4()
   createSpyObj = (args...) -> jasmine.createSpyObj args...
 
-  spyObjects =
+  mocks =
     component: (name = "component_#{uuid()}") -> createSpyObj name, ["resolve"]
     promise: (name = "promise_#{uuid()}") -> createSpyObj name, ["then"]
 
@@ -24,8 +24,8 @@ describe "IOC", ->
 
       beforeEach ->
         componentName = uuid()
-        resolution = spyObjects.promise()
-        component = spyObjects.component()
+        resolution = mocks.promise()
+        component = mocks.component()
 
         components.set componentName, component
         spyOn(resolutions, 'set').and.callThrough()
@@ -52,3 +52,31 @@ describe "IOC", ->
         it "returns the stored resolution", ->
           result = container.resolveComponent componentName
           expect(result).toEqual resolution
+
+    describe "resolving", ->
+      [componentName, resolution] = []
+
+      beforeEach ->
+        componentName = uuid()
+        resolution = mocks.promise()
+        resolution.then.and.callFake (success) -> success()
+        spyOn(container, "resolveComponent").and.returnValue resolution
+
+      it "resolves the component", (done) ->
+        container.resolve componentName, (error, result) ->
+          expect(container.resolveComponent).toHaveBeenCalledWith componentName
+          done(error)
+
+      it "proxies the resolution result on succes", (done) ->
+        mockResult = uuid()
+        resolution.then.and.callFake (success) -> success mockResult
+        container.resolve componentName, (error, result) ->
+          expect(result).toEqual mockResult
+          done(error)
+
+      it "proxies the resolution error on failure", (done) ->
+        mockError = uuid()
+        resolution.then.and.callFake (success, failure) -> failure mockError
+        container.resolve componentName, (error, result) ->
+          expect(error).toEqual mockError
+          done()
