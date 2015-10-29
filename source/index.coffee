@@ -41,12 +41,9 @@ configure = ($dependencies) ->
     setComponent: (name, component) ->
       @components.set name, component
 
-    resolveComponent: (name) ->
+    resolveComponent: (name, done) ->
       @resolutions.set name, @components.get(name).resolve(this) unless @resolutions.isDefined(name)
-      @resolutions.get name
-
-    resolve: (name, done) ->
-      @resolveComponent(name).then done.bind(null, null), done
+      @resolutions.get(name).then done.bind(null, null), done
 
   class IOC.Component
 

@@ -32,63 +32,66 @@ describe "IOC", ->
         expect(components.set).toHaveBeenCalledWith componentName, component
 
     describe "resolving a component", ->
-      [componentName, component, resolution] = []
+      [componentName, component, resolution, resolutionResult] = []
 
       beforeEach ->
-        componentName = uuid()
         resolution = mocks.promise()
+        resolutionResult = uuid()
+        resolution.then.and.callFake (success) -> success resolutionResult
+
+        componentName = uuid()
         component = mocks.component()
+        component.resolve.and.returnValue resolution
 
         components.set componentName, component
         spyOn(resolutions, 'set').and.callThrough()
 
-      describe "when it not yet been resolved", ->
+      describe "when it has not yet been resolved", ->
+
         beforeEach ->
-          component.resolve.and.returnValue resolution
           resolutions.set componentName, undefined
 
-        it "resolves the component", ->
-          container.resolveComponent componentName
-          expect(component.resolve).toHaveBeenCalledWith container
+        it "resolves the component", (done) ->
+          container.resolveComponent componentName, (error) ->
+            return done error if error?
+            expect(component.resolve).toHaveBeenCalledWith container
+            done()
 
-        it "stores and returns the resolution", ->
-          result = container.resolveComponent componentName
-          expect(resolutions.set).toHaveBeenCalledWith componentName, resolution
-          expect(result).toEqual resolution
+        it "stores the resolution promise", (done) ->
+          container.resolveComponent componentName, (error) ->
+            return done error if error?
+            expect(resolutions.set).toHaveBeenCalledWith componentName, resolution
+            done()
+
+        it "proxies the resolution promise result to the callback", (done) ->
+          container.resolveComponent componentName, (error, result) ->
+            return done error if error?
+            expect(result).toEqual resolutionResult
+            done()
 
       describe "when it has already been resolved", ->
 
         beforeEach ->
           resolutions.set componentName, resolution
 
-        it "returns the stored resolution", ->
-          result = container.resolveComponent componentName
-          expect(result).toEqual resolution
+        it "proxies the resolution promise result to the callback", (done) ->
+          container.resolveComponent componentName, (error, result) ->
+            return done error if error?
+            expect(result).toEqual resolutionResult
+            done()
+
+      describe "when the promise returns an error", ->
+        [resolutionError] = []
+
+        beforeEach ->
+          resolutionError = uuid()
+          resolution.then.and.callFake (success, failure) -> failure resolutionError
+
+        it "proxies the error to the callback", (done) ->
+          container.resolveComponent componentName, (error, result) ->
+            expect(error).toEqual resolutionError
+            done()
+
+  describe "Component", ->
 
     describe "resolving", ->
-      [componentName, resolution] = []
-
-      beforeEach ->
-        componentName = uuid()
-        resolution = mocks.promise()
-        resolution.then.and.callFake (success) -> success()
-        spyOn(container, "resolveComponent").and.returnValue resolution
-
-      it "resolves the component", (done) ->
-        container.resolve componentName, (error, result) ->
-          expect(container.resolveComponent).toHaveBeenCalledWith componentName
-          done(error)
-
-      it "proxies the resolution result on succes", (done) ->
-        mockResult = uuid()
-        resolution.then.and.callFake (success) -> success mockResult
-        container.resolve componentName, (error, result) ->
-          expect(result).toEqual mockResult
-          done(error)
-
-      it "proxies the resolution error on failure", (done) ->
-        mockError = uuid()
-        resolution.then.and.callFake (success, failure) -> failure mockError
-        container.resolve componentName, (error, result) ->
-          expect(error).toEqual mockError
-          done()

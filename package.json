@@ -1,0 +1,19 @@
+{
+  "name": "boco-ioc",
+  "version": "0.0.1",
+  "description": "IOC container and utilities",
+  "main": "index.js",
+  "dependencies": {
+    "async": "^1.5.0",
+    "when": "^3.7.4"
+  },
+  "devDependencies": {
+    "jasmine": "^2.3.2",
+    "uuid": "^2.0.1"
+  },
+  "scripts": {
+    "test": "./bin/test"
+  },
+  "author": "Christian Bradley <christianbradley@gmail.com>",
+  "license": "ISC"
+}
