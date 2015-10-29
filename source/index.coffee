@@ -18,41 +18,51 @@ configure = ($dependencies) ->
 
   $ = constructDependencies $dependencies
 
+  class IOC.Dictionary
+    constructor: (props = {}) ->
+      @definitions = props.definitions ?= {}
+
+    set: (name, value) ->
+      @definitions[name] = value
+
+    get: (name, value) ->
+      @definitions[name]
+
+    isDefined: (name) ->
+      @definitions[name] != undefined
+
   class IOC.Container
     createPromise: $.createPromise
 
     constructor: (props = {}) ->
-      @components = props.components ? {}
-      @promises = props.promises ? {}
-      @validated = props.validated ? false
+      @components = props.components ?= new IOC.Dictionary
+      @resolutions = props.resolutions ?= new IOC.Dictionary
 
-    defineComponent: (name, component) ->
-      @components[name] = component
-      @invalidate name
+    setComponent: (name, component) ->
+      @components.set name, component
 
-    invalidate: (name) ->
-      @validated = false
-      delete @promises[name]
+    resolveComponent: (name) ->
+      @resolutions.set name, @components.get(name).resolve(this) unless @resolutions.isDefined(name)
+      @resolutions.get name
 
-    createComponentPromise: (name) ->
-      component = @components[name]
-      resolveComponent = component.resolve.bind component, this
-      @createPromise (resolve, reject) ->
-        proxyCallback = (error, result) -> if error? then reject error else resolve result
-        resolveComponent proxyCallback
-
-    resolveComponent: (name, done) ->
-      promise = @promises[name] ?= @createComponentPromise name
-      promise.then done.bind(null, null), done
+    resolve: (name, done) ->
+      @resolveComponent(name).then done.bind(null, null), done
 
   class IOC.Component
 
+    createPromise: $.createPromise
+
     constructor: (props = {}) ->
-      @injection = IOC.constructInjection props.injection
+      @injection = props.injection
       @factory = props.factory
 
-    resolve: (container, done) ->
-      @injection.inject container, @factory, done
+    resolve: (container) ->
+      @createPromise (resolve, reject) =>
+        done = (error, result) -> if error? then resolve error else reject result
+        @injection.inject container, @factory, done
+
+    getDependencies: ->
+      @injection.getDependencies()
 
   class IOC.Injection
     asyncMap: $.asyncMap
@@ -61,6 +71,9 @@ configure = ($dependencies) ->
     constructor: (props = {}) ->
       @dependencies = props.dependencies ? []
       @transformation = props.transformation
+
+    getDependencies: ->
+      @dependencies.slice()
 
     resolveDependencies: (container, done) ->
       resolveComponent = container.resolveComponent.bind container
@@ -77,6 +90,17 @@ configure = ($dependencies) ->
         (args, done) -> fn args..., done
 
       @asyncWaterfall series, done
+
+  class IOC.DependencyGraph
+    constructor: (props = {}) ->
+      @components = props.components ? {}
+
+    addComponent: (name, dependencies = []) ->
+      @components[name] = dependencies
+
+    validate: ->
+      @assertComponentDependenciesDefined()
+      @assertIsAcyclic()
 
   return IOC
 
