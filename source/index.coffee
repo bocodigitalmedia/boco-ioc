@@ -21,30 +21,28 @@ configure = ($dependencies) ->
   class IOC.ComponentDependenciesNotDefined extends Error
     constructor: (props = {}) ->
       @name = @constructor.name
-      @component = props.component
+      @componentName = props.componentName
       @dependenciesNotDefined = props.dependenciesNotDefined
       super @getMessage()
       Error.captureStackTrace @, @constructor
 
     getMessage: ->
-      componentName = @component.name
-      dependenciesNotDefined = @dependenciesNotDefined.join ", "
-      "Component '#{componentName}' " +
-      "has undefined dependencies: [#{dependenciesNotDefined}]"
+      "Component '#{@componentName}' " +
+      "has undefined dependencies: [#{@dependenciesNotDefined}]"
 
   class IOC.ComponentNotAcyclic extends Error
     constructor: (props = {}) ->
       @name = @constructor.name
-      @component = props.component
+      @componentName = props.componentName
       @cycles = props.cycles
-      super @getMessage()
+      @message = @getMessage()
       Error.captureStackTrace @, @constructor
 
     getMessage: ->
-      componentName = @component.name
-      cycles = @cycles.join ", "
-      "Component '#{componentName}' is not acyclic.\n" +
-      "Cycles: #{cycles}"
+      message = "Component '#{@componentName}' has cycles:\n"
+      @cycles.forEach (cycle) ->
+        message += "*  #{cycle.join(' > ')}"
+      message
 
   class IOC.Dictionary
     constructor: (props = {}) ->
@@ -71,10 +69,9 @@ configure = ($dependencies) ->
 
     createComponentPromise: (name) ->
       component = @components.get name
-      resolveComponent = @resolveComponent.bind this
 
-      @createPromise (resolve, reject) ->
-        component.resolve resolveComponent, (error, result) ->
+      @createPromise (resolve, reject) =>
+        component.resolve this, (error, result) ->
           return reject error if error?
           return resolve result
 
@@ -83,15 +80,15 @@ configure = ($dependencies) ->
       @componentPromises.set name, @createComponentPromise(name)
 
     getComponentDependenciesNotDefined: (name) ->
+      component = @components.get name
       component.dependencies.filter @components.isUndefined.bind(@components)
 
     assertComponentDependenciesDefined: (name) ->
-      component = @components.get name
-      dependenciesNotDefined = getComponentDependenciesNotDefined name
+      dependenciesNotDefined = @getComponentDependenciesNotDefined name
       return if dependenciesNotDefined.length is 0
 
       throw new IOC.ComponentDependenciesNotDefined \
-        component: component
+        componentName: name
         dependenciesNotDefined: dependenciesNotDefined
 
     findComponentCycles: (name) ->
@@ -115,15 +112,16 @@ configure = ($dependencies) ->
       cycles = @findComponentCycles name
       return if cycles.length is 0
       throw new IOC.ComponentNotAcyclic
-        component: component
+        componentName: name
         cycles: cycles
 
     validateComponent: (name) ->
       return if @componentPromises.isDefined name
-      assertComponentDependenciesDefined name
-      assertComponentIsAcyclic name
+      @assertComponentDependenciesDefined name
+      @assertComponentIsAcyclic name
 
     resolveComponent: (name, done) ->
+      @validateComponent name
       @ensureComponentPromise name
       @componentPromises.get(name).then done.bind(null, null), done
 
@@ -135,20 +133,20 @@ configure = ($dependencies) ->
       @dependencies = props.dependencies ? []
       @factory = props.factory
 
-    resolveDependencies: (resolveComponent, done) ->
+    resolveDependencies: (container, done) ->
+      resolveComponent = container.resolveComponent.bind container
       @asyncMap @dependencies, resolveComponent, done
 
     applyFactory: (args, done) ->
       @factory args..., done
 
-    resolve: (resolveComponent) ->
+    resolve: (container, done) ->
       series = Array \
-        @resolveDependencies.bind this, resolveComponent
+        @resolveDependencies.bind(this, container),
         @applyFactory.bind this
 
-      @asyncWaterfall series, (error, result) ->
-        return reject error if error?
-        return resolve result
+      @asyncWaterfall series, done
+
 
   return IOC
 
