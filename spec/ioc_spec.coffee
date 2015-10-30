@@ -19,18 +19,6 @@ describe "IOC", ->
       resolutions = new IOC.Dictionary
       container = new IOC.Container components: components, resolutions: resolutions
 
-    describe "setting components", ->
-      [componentName, component] = []
-
-      beforeEach ->
-        componentName = uuid()
-        component = mocks.component()
-        spyOn(components, "set").and.callThrough()
-
-      it "stores the component using the name as a key", ->
-        container.setComponent componentName, component
-        expect(components.set).toHaveBeenCalledWith componentName, component
-
     describe "resolving a component", ->
       [componentName, component, resolution, resolutionResult] = []
 
@@ -92,6 +80,6 @@ describe "IOC", ->
             expect(error).toEqual resolutionError
             done()
 
-  describe "Component", ->
+  describe "Injection", ->
 
     describe "resolving", ->

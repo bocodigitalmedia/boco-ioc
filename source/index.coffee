@@ -18,6 +18,34 @@ configure = ($dependencies) ->
 
   $ = constructDependencies $dependencies
 
+  class IOC.ComponentDependenciesNotDefined extends Error
+    constructor: (props = {}) ->
+      @name = @constructor.name
+      @component = props.component
+      @dependenciesNotDefined = props.dependenciesNotDefined
+      super @getMessage()
+      Error.captureStackTrace @, @constructor
+
+    getMessage: ->
+      componentName = @component.name
+      dependenciesNotDefined = @dependenciesNotDefined.join ", "
+      "Component '#{componentName}' " +
+      "has undefined dependencies: [#{dependenciesNotDefined}]"
+
+  class IOC.ComponentNotAcyclic extends Error
+    constructor: (props = {}) ->
+      @name = @constructor.name
+      @component = props.component
+      @cycles = props.cycles
+      super @getMessage()
+      Error.captureStackTrace @, @constructor
+
+    getMessage: ->
+      componentName = @component.name
+      cycles = @cycles.join ", "
+      "Component '#{componentName}' is not acyclic.\n" +
+      "Cycles: #{cycles}"
+
   class IOC.Dictionary
     constructor: (props = {}) ->
       @definitions = props.definitions ?= {}
@@ -31,73 +59,96 @@ configure = ($dependencies) ->
     isDefined: (name) ->
       @definitions[name] != undefined
 
+    isUndefined: (name) ->
+      @definitions[name] == undefined
+
   class IOC.Container
     createPromise: $.createPromise
 
     constructor: (props = {}) ->
       @components = props.components ?= new IOC.Dictionary
-      @resolutions = props.resolutions ?= new IOC.Dictionary
+      @componentPromises = props.componentPromises ?= new IOC.Dictionary
 
-    setComponent: (name, component) ->
-      @components.set name, component
+    createComponentPromise: (name) ->
+      component = @components.get name
+      resolveComponent = @resolveComponent.bind this
+
+      @createPromise (resolve, reject) ->
+        component.resolve resolveComponent, (error, result) ->
+          return reject error if error?
+          return resolve result
+
+    ensureComponentPromise: (name) ->
+      return if @componentPromises.isDefined name
+      @componentPromises.set name, @createComponentPromise(name)
+
+    getComponentDependenciesNotDefined: (name) ->
+      component.dependencies.filter @components.isUndefined.bind(@components)
+
+    assertComponentDependenciesDefined: (name) ->
+      component = @components.get name
+      dependenciesNotDefined = getComponentDependenciesNotDefined name
+      return if dependenciesNotDefined.length is 0
+
+      throw new IOC.ComponentDependenciesNotDefined \
+        component: component
+        dependenciesNotDefined: dependenciesNotDefined
+
+    findComponentCycles: (name) ->
+      stack = []
+      cycles = []
+
+      stackContains = (value) ->
+        stack.some (name) -> name is value
+
+      visitComponent = (name) =>
+        return cycles.push(stack.concat(name)) if stackContains(name)
+        stack.push name
+        dependencies = @components.get(name).dependencies
+        dependencies.forEach visitComponent
+        stack.pop()
+
+      visitComponent name
+      return cycles
+
+    assertComponentIsAcyclic: (name) ->
+      cycles = @findComponentCycles name
+      return if cycles.length is 0
+      throw new IOC.ComponentNotAcyclic
+        component: component
+        cycles: cycles
+
+    validateComponent: (name) ->
+      return if @componentPromises.isDefined name
+      assertComponentDependenciesDefined name
+      assertComponentIsAcyclic name
 
     resolveComponent: (name, done) ->
-      @resolutions.set name, @components.get(name).resolve(this) unless @resolutions.isDefined(name)
-      @resolutions.get(name).then done.bind(null, null), done
+      @ensureComponentPromise name
+      @componentPromises.get(name).then done.bind(null, null), done
 
   class IOC.Component
-
-    createPromise: $.createPromise
-
-    constructor: (props = {}) ->
-      @injection = props.injection
-      @factory = props.factory
-
-    resolve: (container) ->
-      @createPromise (resolve, reject) =>
-        done = (error, result) -> if error? then resolve error else reject result
-        @injection.inject container, @factory, done
-
-    getDependencies: ->
-      @injection.getDependencies()
-
-  class IOC.Injection
     asyncMap: $.asyncMap
     asyncWaterfall: $.asyncWaterfall
 
     constructor: (props = {}) ->
       @dependencies = props.dependencies ? []
-      @transformation = props.transformation
+      @factory = props.factory
 
-    getDependencies: ->
-      @dependencies.slice()
-
-    resolveDependencies: (container, done) ->
-      resolveComponent = container.resolveComponent.bind container
+    resolveDependencies: (resolveComponent, done) ->
       @asyncMap @dependencies, resolveComponent, done
 
-    applyTransformation: (args, done) ->
-      return done null, [] unless @transformation?
-      return done null, @transformation args
+    applyFactory: (args, done) ->
+      @factory args..., done
 
-    inject: (container, fn, done) ->
+    resolve: (resolveComponent) ->
       series = Array \
-        @resolveDependencies.bind(this, container),
-        @applyTransformation.bind(this),
-        (args, done) -> fn args..., done
+        @resolveDependencies.bind this, resolveComponent
+        @applyFactory.bind this
 
-      @asyncWaterfall series, done
-
-  class IOC.DependencyGraph
-    constructor: (props = {}) ->
-      @components = props.components ? {}
-
-    addComponent: (name, dependencies = []) ->
-      @components[name] = dependencies
-
-    validate: ->
-      @assertComponentDependenciesDefined()
-      @assertIsAcyclic()
+      @asyncWaterfall series, (error, result) ->
+        return reject error if error?
+        return resolve result
 
   return IOC
 
