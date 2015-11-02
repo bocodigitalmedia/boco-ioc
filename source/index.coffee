@@ -149,12 +149,14 @@ configure = (configuration) ->
       dependencies = @get(name).dependencies
       dependencies.reduce reduceDependencyCycles, []
 
-    getParentsOf: (dependee) ->
-      reduceFn = (memo, component, name) ->
-        return memo if component.dependencies.indexOf(dependee) is -1
-        return memo if memo.indexOf(name) isnt -1
-        memo.concat name
-      @reduce reduceFn, []
+    getParentsOf: (dependee, parents = []) ->
+
+      reduceParents = (parents, component, name) =>
+        return parents if component.dependencies.indexOf(dependee) is -1
+        parents.push name if parents.indexOf(name) is -1
+        @getParentsOf name, parents
+
+      @reduce reduceParents, parents
 
     assertDefined: (name) ->
       return if @isDefined(name)
