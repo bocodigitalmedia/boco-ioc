@@ -34,7 +34,7 @@ configure = (configuration) ->
     asyncWaterfall: (series, done) ->
       @require("async").waterfall series, done
 
-  class CustomError extends Error
+  class Exception extends Error
     name: undefined
 
     constructor: (properties = {}) ->
@@ -45,7 +45,7 @@ configure = (configuration) ->
 
     getMessage: -> @constructor.name
 
-  class ComponentDependenciesUndefined extends CustomError
+  class ComponentDependenciesUndefined extends Exception
     componentName: undefined
     undefinedDependencies: undefined
 
@@ -53,7 +53,7 @@ configure = (configuration) ->
       "Component '#{@componentName}' " +
       "has undefined dependencies: [#{@undefinedDependencies}]"
 
-  class ComponentCyclic extends CustomError
+  class ComponentCyclic extends Exception
     componentName: undefined
     cycles: undefined
 
@@ -65,7 +65,7 @@ configure = (configuration) ->
       mapFn = (cycle) => "['#{cycle.join("','")}']"
       @cycles.map(mapFn).join(", ")
 
-  class ComponentUndefined extends CustomError
+  class ComponentUndefined extends Exception
     componentName: undefined
 
     getMessage: ->
@@ -232,7 +232,7 @@ configure = (configuration) ->
     configuration: $
     configure: configure
     Configuration: Configuration
-    CustomError: CustomError
+    Exception: Exception
     ComponentCyclic: ComponentCyclic
     ComponentDependenciesUndefined: ComponentDependenciesUndefined
     ComponentUndefined: ComponentUndefined
