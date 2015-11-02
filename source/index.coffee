@@ -171,14 +171,17 @@ configure = (configuration) ->
   class Container
 
     constructor: (properties = {}) ->
-      @components = new Components properties.components
-      @promises = new Promises properties.promises
+      _components = new Components properties.components
+      _promises = new Promises properties.promises
 
-      @components.addListener "set", (event) =>
-        @promises.remove event.payload.key
+      _components.addListener "set", (event) ->
+        _promises.remove event.payload.key
 
-      @components.addListener "remove", (event) =>
-        @promises.remove event.payload.key
+      _components.addListener "remove", (event) ->
+        _promises.remove event.payload.key
+
+      $.defineProperty @, "components", enumerable: true, get: -> _components
+      $.defineProperty @, "promises", enumerable: true, get: -> _promises
 
     createComponentPromise: (name) ->
       $.createPromise (resolve, reject) =>
