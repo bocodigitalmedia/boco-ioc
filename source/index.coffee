@@ -1,11 +1,29 @@
 configure = (configuration) ->
 
   class Configuration
+
     constructor: (properties = {}) ->
       @[key] = val for own key,val of properties
 
     require: (name) ->
       require name
+
+    assign: (target, sources...) ->
+      sources.forEach (source) ->
+        target[key] = value for own key, value of source
+      return target
+
+    createEventEmitter: ->
+      new (@require("events").EventEmitter)
+
+    createObject: (args...) ->
+      Object.create args...
+
+    defineProperty: (args...) ->
+      Object.defineProperty args...
+
+    defineProperties: (args...) ->
+      Object.defineProperties args...
 
     createPromise: (resolver) ->
       @require("when").promise resolver
@@ -21,15 +39,17 @@ configure = (configuration) ->
 
     constructor: (properties = {}) ->
       @[key] = val for own key,val of properties
-
       @name = @constructor.name
+      @message = @getMessage()
       Error.captureStackTrace @, @constructor
+
+    getMessage: -> @constructor.name
 
   class ComponentDependenciesUndefined extends CustomError
     componentName: undefined
     undefinedDependencies: undefined
 
-    Object.defineProperty @prototype, "message", get: ->
+    getMessage: ->
       "Component '#{@componentName}' " +
       "has undefined dependencies: [#{@undefinedDependencies}]"
 
@@ -37,38 +57,74 @@ configure = (configuration) ->
     componentName: undefined
     cycles: undefined
 
+    getMessage: ->
+      "Component '#{@componentName}' has cycles:\n" +
+      @inspectCycles()
+
     inspectCycles: ->
       mapFn = (cycle) -> "* #{cycle.join(" > ")}"
       @cycles.map(mapFn).join("\n")
 
-    Object.defineProperty @prototype, "message", get: ->
-      "Component '#{@componentName}' has cycles:\n" +
-      @inspectCycles()
-
   class ComponentUndefined extends CustomError
     componentName: undefined
 
-    Object.defineProperty @prototype, "message", get: ->
+    getMessage: ->
       "Component not defined: '#{@componentName}'"
 
+  class DictionaryEvent
+    constructor: (properties = {}) ->
+      @name = @constructor.name
+      @setPayload properties.payload
+
+    setPayload: (payload = {}) ->
+      @payload = {}
+      @payload.dictionary = payload.dictionary
+      @payload.key = payload.key
+
+  class DictionaryValueSet extends DictionaryEvent
+
+  class DictionaryValueRemoved extends DictionaryEvent
+
   class Dictionary
-    @definitions: undefined
 
     constructor: (properties = {}) ->
-      @[key] = val for own key,val of properties
-      @definitions ?= {}
+      _emitter = properties.eventEmitter ? $.createEventEmitter()
 
-    set: (name, value) ->
-      @definitions[name] = value
+      @emit = (args...) -> _emitter.emit args...
+      @addListener = (args...) -> _emitter.addListener args...
+      @removeListener = (args...) -> _emitter.removeListener args...
+      @removeAllListeners = (args...) -> _emitter.removeAllListeners args...
 
-    get: (name, value) ->
-      @definitions[name]
+      _definitions = $.assign $.createObject(null), properties.definitions
 
-    isDefined: (name) ->
-      @definitions[name] != undefined
+      $.defineProperty @, "definitions", enumerable: true, get: ->
+        $.assign {}, _definitions
 
-    isUndefined: (name) ->
-      @definitions[name] == undefined
+      @get = (key) ->
+        _definitions[key]
+
+      @set = (key, value) ->
+        result = _definitions[key] = value
+        @emit "set", new DictionaryValueSet
+          payload: { dictionary: @, key: key }
+        return result
+
+      @remove = (key) ->
+        value = _definitions[key]
+        result = delete _definitions[key]
+        @emit "remove", new DictionaryValueRemoved
+          payload: { dictionary: @, key: key }
+        return result
+
+    addListener: (args...) -> @emitter.addListener args...
+    removeListener: (args...) -> @emitter.removeListener args...
+    removeAllListeners: (args...) -> @emitter.removeAllListeners args...
+
+    isDefined: (key) ->
+      @get(key) != undefined
+
+    isUndefined: (key) ->
+      @get(key) == undefined
 
   class Components extends Dictionary
 
@@ -115,14 +171,16 @@ configure = (configuration) ->
   class Promises extends Dictionary
 
   class Container
-    components: undefined
-    promises: undefined
 
     constructor: (properties = {}) ->
-      @[key] = val for own key,val of properties
+      @components = new Components properties.components
+      @promises = new Promises properties.promises
 
-      @components ?= new Components
-      @promises ?= new Promises
+      @components.addListener "set", (event) =>
+        @promises.remove event.payload.key
+
+      @components.addListener "remove", (event) =>
+        @promises.remove event.payload.key
 
     createComponentPromise: (name) ->
       $.createPromise (resolve, reject) =>
@@ -142,14 +200,16 @@ configure = (configuration) ->
       catch error then done error
 
   class Component
-    dependencies: undefined
-    factory: undefined
 
     constructor: (properties = {}) ->
-      @[key] = val for own key,val of properties
+      _dependencies = properties.dependencies?.slice() ? []
+      _factory = properties.factory
 
-      @dependencies ?= []
-      @factory ?= null
+      $.defineProperties @,
+        dependencies:
+          enumerable: true, get: -> _dependencies.slice()
+        factory:
+          enumerable: true, get: -> _factory
 
     resolveDependencies: (container, done) ->
       resolveComponent = container.resolveComponent.bind container
@@ -172,13 +232,16 @@ configure = (configuration) ->
     configure: configure
     Configuration: Configuration
     CustomError: CustomError
-    ComponentUndefined: ComponentUndefined
-    ComponentDependenciesUndefined: ComponentDependenciesUndefined
     ComponentCyclic: ComponentCyclic
-    Dictionary: Dictionary
-    Components: Components
-    Promises: Promises
-    Container: Container
+    ComponentDependenciesUndefined: ComponentDependenciesUndefined
+    ComponentUndefined: ComponentUndefined
     Component: Component
+    Components: Components
+    Container: Container
+    Dictionary: Dictionary
+    DictionaryEvent: DictionaryEvent
+    DictionaryValueSet: DictionaryValueSet
+    DictionaryValueRemoved: DictionaryValueRemoved
+    Promises: Promises
 
 module.exports = configure()
