@@ -58,12 +58,12 @@ configure = (configuration) ->
     cycles: undefined
 
     getMessage: ->
-      "Component '#{@componentName}' has cycles:\n" +
+      "Component '#{@componentName}' has #{@cycles.length} cycle(s): " +
       @inspectCycles()
 
     inspectCycles: ->
-      mapFn = (cycle) -> "* #{cycle.join(" > ")}"
-      @cycles.map(mapFn).join("\n")
+      mapFn = (cycle) => "['#{cycle.join("','")}']"
+      @cycles.map(mapFn).join(", ")
 
   class ComponentUndefined extends CustomError
     componentName: undefined
@@ -132,15 +132,13 @@ configure = (configuration) ->
       @get(name).dependencies.filter @isUndefined.bind(@)
 
     getCycles: (name, stack = []) ->
-      return stack.concat(name) if stack.indexOf(name) isnt -1
+      return [stack.concat(name)] if stack.indexOf(name) isnt -1
       return [] unless @isDefined(name)
+      stack = stack.concat name
 
       reduceDependencyCycles = (memo, dependency) =>
-        cycles = @getCycles dependency, stack
-        memo.push cycles if cycles.length isnt 0
-        memo
+        memo.concat @getCycles(dependency, stack)
 
-      stack = stack.concat name
       dependencies = @get(name).dependencies
       dependencies.reduce reduceDependencyCycles, []
 
