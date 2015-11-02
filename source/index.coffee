@@ -1,52 +1,62 @@
-configure = ($dependencies) ->
-  IOC = {}
-  IOC.configure = configure
+configure = (configuration) ->
 
-  constructDependencies = (props = {}) ->
-    $ = Object.create props
+  class Configuration
+    constructor: (properties = {}) ->
+      @[key] = val for own key,val of properties
 
-    $.createPromise ?= (resolver) ->
-      require("when").promise resolver
+    require: (name) ->
+      require name
 
-    $.asyncMap ?= (array, mapFn, done) ->
-      require("async").map array, mapFn, done
+    createPromise: (resolver) ->
+      @require("when").promise resolver
 
-    $.asyncWaterfall ?= (series, done) ->
-      require("async").waterfall series, done
+    asyncMap: (array, mapFn, done) ->
+      @require("async").map array, mapFn, done
 
-    return $
+    asyncWaterfall: (series, done) ->
+      @require("async").waterfall series, done
 
-  $ = constructDependencies $dependencies
+  class CustomError extends Error
+    name: undefined
 
-  class IOC.ComponentDependenciesNotDefined extends Error
-    constructor: (props = {}) ->
+    constructor: (properties = {}) ->
+      @[key] = val for own key,val of properties
+
       @name = @constructor.name
-      @componentName = props.componentName
-      @dependenciesNotDefined = props.dependenciesNotDefined
-      super @getMessage()
       Error.captureStackTrace @, @constructor
 
-    getMessage: ->
+  class ComponentDependenciesUndefined extends CustomError
+    componentName: undefined
+    undefinedDependencies: undefined
+
+    Object.defineProperty @prototype, "message", get: ->
       "Component '#{@componentName}' " +
-      "has undefined dependencies: [#{@dependenciesNotDefined}]"
+      "has undefined dependencies: [#{@undefinedDependencies}]"
 
-  class IOC.ComponentNotAcyclic extends Error
-    constructor: (props = {}) ->
-      @name = @constructor.name
-      @componentName = props.componentName
-      @cycles = props.cycles
-      @message = @getMessage()
-      Error.captureStackTrace @, @constructor
+  class ComponentCyclic extends CustomError
+    componentName: undefined
+    cycles: undefined
 
-    getMessage: ->
-      message = "Component '#{@componentName}' has cycles:\n"
-      @cycles.forEach (cycle) ->
-        message += "*  #{cycle.join(' > ')}"
-      message
+    inspectCycles: ->
+      mapFn = (cycle) -> "* #{cycle.join(" > ")}"
+      @cycles.map(mapFn).join("\n")
 
-  class IOC.Dictionary
-    constructor: (props = {}) ->
-      @definitions = props.definitions ?= {}
+    Object.defineProperty @prototype, "message", get: ->
+      "Component '#{@componentName}' has cycles:\n" +
+      @inspectCycles()
+
+  class ComponentUndefined extends CustomError
+    componentName: undefined
+
+    Object.defineProperty @prototype, "message", get: ->
+      "Component not defined: '#{@componentName}'"
+
+  class Dictionary
+    @definitions: undefined
+
+    constructor: (properties = {}) ->
+      @[key] = val for own key,val of properties
+      @definitions ?= {}
 
     set: (name, value) ->
       @definitions[name] = value
@@ -60,82 +70,90 @@ configure = ($dependencies) ->
     isUndefined: (name) ->
       @definitions[name] == undefined
 
-  class IOC.Container
-    createPromise: $.createPromise
+  class Components extends Dictionary
 
-    constructor: (props = {}) ->
-      @components = props.components ?= new IOC.Dictionary
-      @componentPromises = props.componentPromises ?= new IOC.Dictionary
+    getUndefinedDependencies: (name) ->
+      @get(name).dependencies.filter @isUndefined.bind(@)
 
-    createComponentPromise: (name) ->
-      component = @components.get name
+    getCycles: (name, stack = []) ->
+      return stack.concat(name) if stack.indexOf(name) isnt -1
+      return [] unless @isDefined(name)
 
-      @createPromise (resolve, reject) =>
-        component.resolve this, (error, result) ->
-          return reject error if error?
-          return resolve result
+      reduceDependencyCycles = (memo, dependency) =>
+        cycles = @getCycles dependency, stack
+        memo.push cycles if cycles.length isnt 0
+        memo
 
-    ensureComponentPromise: (name) ->
-      return if @componentPromises.isDefined name
-      @componentPromises.set name, @createComponentPromise(name)
+      stack = stack.concat name
+      dependencies = @get(name).dependencies
+      dependencies.reduce reduceDependencyCycles, []
 
-    getComponentDependenciesNotDefined: (name) ->
-      component = @components.get name
-      component.dependencies.filter @components.isUndefined.bind(@components)
-
-    assertComponentDependenciesDefined: (name) ->
-      dependenciesNotDefined = @getComponentDependenciesNotDefined name
-      return if dependenciesNotDefined.length is 0
-
-      throw new IOC.ComponentDependenciesNotDefined \
+    assertDefined: (name) ->
+      return if @isDefined(name)
+      throw new ComponentUndefined
         componentName: name
-        dependenciesNotDefined: dependenciesNotDefined
 
-    findComponentCycles: (name) ->
-      stack = []
-      cycles = []
-
-      stackContains = (value) ->
-        stack.some (name) -> name is value
-
-      visitComponent = (name) =>
-        return cycles.push(stack.concat(name)) if stackContains(name)
-        stack.push name
-        dependencies = @components.get(name).dependencies
-        dependencies.forEach visitComponent
-        stack.pop()
-
-      visitComponent name
-      return cycles
-
-    assertComponentIsAcyclic: (name) ->
-      cycles = @findComponentCycles name
+    assertAcyclic: (name) ->
+      cycles = @getCycles name
       return if cycles.length is 0
-      throw new IOC.ComponentNotAcyclic
+      throw new ComponentCyclic
         componentName: name
         cycles: cycles
 
-    validateComponent: (name) ->
-      return if @componentPromises.isDefined name
-      @assertComponentDependenciesDefined name
-      @assertComponentIsAcyclic name
+    assertDependenciesDefined: (name) ->
+      undefinedDependencies = @getUndefinedDependencies name
+      return if undefinedDependencies.length is 0
+      throw new ComponentDependenciesUndefined
+        componentName: name
+        undefinedDependencies: undefinedDependencies
+
+    validate: (name) ->
+      @assertDefined name
+      @assertAcyclic name
+      @assertDependenciesDefined name
+
+  class Promises extends Dictionary
+
+  class Container
+    components: undefined
+    promises: undefined
+
+    constructor: (properties = {}) ->
+      @[key] = val for own key,val of properties
+
+      @components ?= new Components
+      @promises ?= new Promises
+
+    createComponentPromise: (name) ->
+      $.createPromise (resolve, reject) =>
+        @components.get(name).resolve this, (error, result) ->
+          return reject error if error?
+          return resolve result
+
+    ensureComponentPromiseSet: (name) ->
+      return if @promises.isDefined name
+      @promises.set name, @createComponentPromise(name)
+      @promises.get name
 
     resolveComponent: (name, done) ->
-      @validateComponent name
-      @ensureComponentPromise name
-      @componentPromises.get(name).then done.bind(null, null), done
+      try
+        @components.validate(name) unless @promises.isDefined(name)
+        @ensureComponentPromiseSet(name).then done.bind(null, null), done
+      catch error then done error
 
-  class IOC.Component
-    asyncMap: $.asyncMap
-    asyncWaterfall: $.asyncWaterfall
+  class Component
+    dependencies: undefined
+    factory: undefined
 
-    constructor: (props = {}) ->
-      @dependencies = props.dependencies ? []
-      @factory = props.factory
+    constructor: (properties = {}) ->
+      @[key] = val for own key,val of properties
+
+      @dependencies ?= []
+      @factory ?= null
 
     resolveDependencies: (container, done) ->
       resolveComponent = container.resolveComponent.bind container
-      @asyncMap @dependencies, resolveComponent, done
+      $.asyncMap @dependencies, resolveComponent, done
 
     applyFactory: (args, done) ->
       @factory args..., done
@@ -145,9 +163,22 @@ configure = ($dependencies) ->
         @resolveDependencies.bind(this, container),
         @applyFactory.bind this
 
-      @asyncWaterfall series, done
+      $.asyncWaterfall series, done
 
+  $ = new Configuration configuration
 
-  return IOC
+  IOC =
+    configuration: $
+    configure: configure
+    Configuration: Configuration
+    CustomError: CustomError
+    ComponentUndefined: ComponentUndefined
+    ComponentDependenciesUndefined: ComponentDependenciesUndefined
+    ComponentCyclic: ComponentCyclic
+    Dictionary: Dictionary
+    Components: Components
+    Promises: Promises
+    Container: Container
+    Component: Component
 
 module.exports = configure()
