@@ -153,8 +153,8 @@ configure = (configuration) ->
 
       reduceParents = (parents, component, name) =>
         return parents if component.dependencies.indexOf(dependee) is -1
-        parents.push name if parents.indexOf(name) is -1
-        @getParentsOf name, parents
+        return parents unless parents.indexOf(name) is -1
+        @getParentsOf name, parents.concat(name)
 
       @reduce reduceParents, parents
 
@@ -201,8 +201,8 @@ configure = (configuration) ->
 
     handleComponentChange: (key) ->
       @promises.remove key
-      @components.getParentsOf(key).forEach (name) =>
-        @promises.remove name
+      @components.getParentsOf(key).forEach (parent) =>
+        @promises.remove parent
 
     createComponentPromise: (name) ->
       $.createPromise (resolve, reject) =>
