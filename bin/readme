@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+cat docs/ioc.md docs/usage.md LICENSE.md > README.md

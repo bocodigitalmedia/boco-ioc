@@ -21,7 +21,7 @@
   },
   "scripts": {
     "test": "NODE_PATH=$NODE_PATH:. ./bin/coffee -l README.md",
-    "compile": "rm -f boco-ioc/*.js && ./bin/coffee -o boco-ioc -cmb source"
+    "preinstall": "rm -rf boco-ioc/*.js && ./bin/coffee -o boco-ioc -cmb source && ./bin/readme"
   },
   "author": "Christian Bradley <christian.bradley@bocodigital.com>",
   "license": "MIT"
