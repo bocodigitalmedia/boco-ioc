@@ -1,6 +1,6 @@
 # IOC
 
-Inversion of Control & Dependency Injection for javascript;
+Inversion of Control & Dependency Injection for javascript.
 
 * Highly configurable
 * Supports asynchronous dependencies
