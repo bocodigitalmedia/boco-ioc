@@ -116,6 +116,13 @@ configure = (configuration) ->
           payload: { dictionary: @, key: key }
         return result
 
+      @forEach = (callback) =>
+        callback value, key, @ for own key, value of _definitions
+
+    reduce: (reduceFn, memo) ->
+      @forEach (value, key, target) -> memo = reduceFn memo, value, key, target
+      memo
+
     addListener: (args...) -> @emitter.addListener args...
     removeListener: (args...) -> @emitter.removeListener args...
     removeAllListeners: (args...) -> @emitter.removeAllListeners args...
@@ -141,6 +148,13 @@ configure = (configuration) ->
 
       dependencies = @get(name).dependencies
       dependencies.reduce reduceDependencyCycles, []
+
+    getParentsOf: (dependee) ->
+      reduceFn = (memo, component, name) ->
+        return memo if component.dependencies.indexOf(dependee) is -1
+        return memo if memo.indexOf(name) isnt -1
+        memo.concat name
+      @reduce reduceFn, []
 
     assertDefined: (name) ->
       return if @isDefined(name)
@@ -174,14 +188,19 @@ configure = (configuration) ->
       _components = new Components properties.components
       _promises = new Promises properties.promises
 
-      _components.addListener "set", (event) ->
-        _promises.remove event.payload.key
+      _components.addListener "set", (event) =>
+        @handleComponentChange event.payload.key
 
-      _components.addListener "remove", (event) ->
-        _promises.remove event.payload.key
+      _components.addListener "remove", (event) =>
+        @handleComponentChange event.payload.key
 
       $.defineProperty @, "components", enumerable: true, get: -> _components
       $.defineProperty @, "promises", enumerable: true, get: -> _promises
+
+    handleComponentChange: (key) ->
+      @promises.remove key
+      @components.getParentsOf(key).forEach (name) =>
+        @promises.remove name
 
     createComponentPromise: (name) ->
       $.createPromise (resolve, reject) =>
