@@ -192,12 +192,12 @@ configure = (configuration) ->
     ensureComponentPromiseSet: (name) ->
       return if @promises.isDefined name
       @promises.set name, @createComponentPromise(name)
-      @promises.get name
 
     resolveComponent: (name, done) ->
       try
         @components.validate(name) unless @promises.isDefined(name)
-        @ensureComponentPromiseSet(name).then done.bind(null, null), done
+        @ensureComponentPromiseSet(name)
+        @promises.get(name).then done.bind(null, null), done
       catch error then done error
 
   class Component
