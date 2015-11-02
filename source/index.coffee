@@ -2,11 +2,27 @@ configure = (configuration) ->
 
   class Configuration
 
-    constructor: (properties = {}) ->
-      @[key] = val for own key,val of properties
+    constructor: (props = {}) ->
+      @[key] = val for own key,val of props
 
     require: (name) ->
       require name
+
+    getFunctionArguments: (fn) ->
+      pattern = /\(([^)]*)\)/
+      fn.toString().match(pattern)[1].split /,\s*/
+
+    isObject: (value) ->
+      value? and typeof value is "object"
+
+    isFunction: (value) ->
+      typeof value is "function"
+
+    isArray: (value) ->
+      Array.isArray value
+
+    isEmpty: (value) ->
+      value? and value.length is 0
 
     assign: (target, sources...) ->
       sources.forEach (source) ->
@@ -37,13 +53,24 @@ configure = (configuration) ->
   class Exception extends Error
     name: undefined
 
-    constructor: (properties = {}) ->
-      @[key] = val for own key,val of properties
+    constructor: (props = {}) ->
+      @[key] = val for own key,val of props
       @name = @constructor.name
       @message = @getMessage()
       Error.captureStackTrace @, @constructor
 
     getMessage: -> @constructor.name
+
+  class NotImplemented extends Exception
+    getMessage: -> "Abstract method not implemented."
+
+  class StrategyNotFound extends Exception
+    factory: undefined
+    args: undefined
+
+    getMessage: ->
+      factory = @factory.constructor.name
+      "No strategy found for factory '#{factory}' using arguments: [#{@args}]"
 
   class ComponentDependenciesUndefined extends Exception
     componentName: undefined
@@ -72,9 +99,9 @@ configure = (configuration) ->
       "Component not defined: '#{@componentName}'"
 
   class DictionaryEvent
-    constructor: (properties = {}) ->
+    constructor: (props = {}) ->
       @name = @constructor.name
-      @setPayload properties.payload
+      @setPayload props.payload
 
     setPayload: (payload = {}) ->
       @payload = {}
@@ -87,15 +114,15 @@ configure = (configuration) ->
 
   class Dictionary
 
-    constructor: (properties = {}) ->
-      _emitter = properties.eventEmitter ? $.createEventEmitter()
+    constructor: (props = {}) ->
+      _emitter = props.eventEmitter ? $.createEventEmitter()
 
       @emit = (args...) -> _emitter.emit args...
       @addListener = (args...) -> _emitter.addListener args...
       @removeListener = (args...) -> _emitter.removeListener args...
       @removeAllListeners = (args...) -> _emitter.removeAllListeners args...
 
-      _definitions = $.assign $.createObject(null), properties.definitions
+      _definitions = $.assign $.createObject(null), props.definitions
 
       $.defineProperty @, "definitions", enumerable: true, get: ->
         $.assign {}, _definitions
@@ -186,9 +213,10 @@ configure = (configuration) ->
 
   class Container
 
-    constructor: (properties = {}) ->
-      _components = new Components properties.components
-      _promises = new Promises properties.promises
+    constructor: (props = {}) ->
+      @componentFactory = props.componentFactory ? new ComponentFactory
+      _components = new Components props.components
+      _promises = new Promises props.promises
 
       _components.addListener "set", (event) =>
         @handleComponentChange event.payload.key
@@ -198,6 +226,10 @@ configure = (configuration) ->
 
       $.defineProperty @, "components", enumerable: true, get: -> _components
       $.defineProperty @, "promises", enumerable: true, get: -> _promises
+
+    defineComponent: (name, args...) ->
+      component = @componentFactory.construct args...
+      @components.set name, component
 
     handleComponentChange: (key) ->
       @promises.remove key
@@ -223,9 +255,10 @@ configure = (configuration) ->
 
   class Component
 
-    constructor: (properties = {}) ->
-      _dependencies = properties.dependencies?.slice() ? []
-      _factory = properties.factory
+    constructor: (props = {}) ->
+      _dependencies = props.dependencies.slice() if props.dependencies != null
+      _dependencies ?= []
+      _factory = props.factory
 
       $.defineProperties @,
         dependencies:
@@ -247,6 +280,71 @@ configure = (configuration) ->
 
       $.asyncWaterfall series, done
 
+  class Strategies
+    constructor: (props = {}) ->
+      @collection = props.collection ? []
+
+    unshift: (strategy) ->
+      @strategies.unshift strategy
+
+    push: (strategy) ->
+      @collection.push strategy
+
+    find: (args...) ->
+      reduceFn = (memo, strategy) ->
+        return memo if memo?
+        return strategy if strategy.test(args...)
+      @collection.reduce reduceFn, null
+
+  class Strategy
+    test: -> throw new NotImplemented
+    use: -> throw new NotImplemented
+
+  class PropertiesStrategy extends Strategy
+    test: (props, rest...) ->
+      use = $.isEmpty(rest) and
+            $.isObject(props) and
+            $.isFunction(props.factory)
+
+    constructComponent: (props) ->
+      new Component props
+
+    use: (props) ->
+      @constructComponent props
+
+  class ArgumentsStrategy extends Strategy
+    test: (dependencies = [], factory, rest...) ->
+      use = $.isEmpty(rest) and
+            $.isArray(dependencies) and
+            $.isFunction(factory)
+
+    use: (dependencies = [], factory) ->
+      new Component dependencies: dependencies, factory: factory
+
+  class AutoFactoryStrategy extends Strategy
+    test: (factory, rest...) ->
+      use = $.isEmpty(rest) and
+            $.isFunction(factory)
+
+    use: (factory) ->
+      dependencies = $.getFunctionArguments(factory)[0...-1]
+      new Component dependencies: dependencies, factory: factory
+
+  class ComponentFactory
+    constructor: (props = {}) ->
+      @strategies = props.strategies
+
+      unless @strategies?
+        @strategies = new Strategies
+        @strategies.push new PropertiesStrategy
+        @strategies.push new ArgumentsStrategy
+        @strategies.push new AutoFactoryStrategy
+
+    construct: (args...) ->
+      strategy = @strategies.find args...
+      throw new StrategyNotFound factory: this, args: args unless strategy?
+      strategy.use args...
+
   $ = new Configuration configuration
 
   IOC =
@@ -254,6 +352,8 @@ configure = (configuration) ->
     configure: configure
     Configuration: Configuration
     Exception: Exception
+    NotImplemented: NotImplemented
+    StrategyNotFound: StrategyNotFound
     ComponentCyclic: ComponentCyclic
     ComponentDependenciesUndefined: ComponentDependenciesUndefined
     ComponentUndefined: ComponentUndefined
@@ -265,5 +365,10 @@ configure = (configuration) ->
     DictionaryValueSet: DictionaryValueSet
     DictionaryValueRemoved: DictionaryValueRemoved
     Promises: Promises
+    Strategies: Strategies
+    Strategy: Strategy
+    ComponentFactory: ComponentFactory
+    PropertiesStrategy: PropertiesStrategy
+    ArgumentsStrategy: ArgumentsStrategy
 
 module.exports = configure()
