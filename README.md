@@ -1,5 +1,6 @@
+# boco-ioc
 
-# IOC
+[![npm version](https://badge.fury.io/js/boco-ioc.svg)](https://badge.fury.io/js/boco-ioc)
 
 Inversion of Control & Dependency Injection for javascript.
 
@@ -8,30 +9,34 @@ Inversion of Control & Dependency Injection for javascript.
 * Lazy-loads dependencies
 * Automatically maintains dependency cache
 
+Installation options:
+
+* [npm] `npm install boco-ioc`
+
+[npm]: https://npmjs.org
+
 # Usage
 
-```coffee
-IOC = require './source'
-container = new IOC.Container
-assert = require 'assert'
+    IOC = require './source'
+    container = new IOC.Container
+    assert = require 'assert'
 
-# You can define components using a properties hash
-container.defineComponent "foo",
-  dependencies: null
-  factory: (done) -> done null, "FOO"
+    # You can define components using a properties hash
+    container.defineComponent "foo",
+      dependencies: null
+      factory: (done) -> done null, "FOO"
 
-# Or pass in the dependencies and factory as arguments
-container.defineComponent "bar", null, (done) ->
-  done null, "BAR"
+    # Or pass in the dependencies and factory as arguments
+    container.defineComponent "bar", null, (done) ->
+      done null, "BAR"
 
-# Or determine the dependencies automatically
-container.defineComponent "foobar", (foo, bar, done) ->
-  done null, foo + bar
+    # Or determine the dependencies automatically
+    container.defineComponent "foobar", (foo, bar, done) ->
+      done null, foo + bar
 
-container.resolveComponent "foobar", (error, foobar) ->
-  throw error if error?
-  assert.equal foobar, "FOOBAR"
-```
+    container.resolveComponent "foobar", (error, foobar) ->
+      throw error if error?
+      assert.equal foobar, "FOOBAR"
 
 # License
 
