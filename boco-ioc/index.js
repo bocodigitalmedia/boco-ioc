@@ -551,7 +551,7 @@ configure = function(configuration) {
           this.components.validate(name);
         }
         this.ensureComponentPromiseSet(name);
-        return this.promises.get(name).then(done.bind(null, null), done);
+        return this.promises.get(name).done(done.bind(null, null), done);
       } catch (error1) {
         error = error1;
         return done(error);

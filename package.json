@@ -1,6 +1,6 @@
 {
   "name": "boco-ioc",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Inversion of Control (IOC) & Dependency Injection (DI) for javascript",
   "keywords": [
     "inversion of control",
@@ -21,7 +21,12 @@
   },
   "scripts": {
     "test": "NODE_PATH=$NODE_PATH:. ./bin/coffee -l README.md",
-    "compile": "rm -f boco-ioc/*.js && ./bin/coffee -o boco-ioc -cmb source"
+    "clean": "rm -rf boco-ioc/**/*.js boco-ioc/**/*.map",
+    "compile-source": "./bin/coffee -o boco-ioc -cmb source",
+    "compile-readme": "./bin/readme",
+    "compile": "npm run compile-source && npm run compile-readme",
+    "preinstall": "npm run clean && npm run compile",
+    "preversion": "npm run clean && npm run compile && npm test"
   },
   "author": "Christian Bradley <christian.bradley@bocodigital.com>",
   "license": "MIT"

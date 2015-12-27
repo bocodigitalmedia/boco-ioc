@@ -1,0 +1,19 @@
+#!/usr/bin/env node
+var Path = require("path");
+var File = require("fs");
+var packageDir = Path.resolve(__dirname, "..");
+var docsDir = Path.join(packageDir, "docs");
+var targetPath = Path.join(packageDir, "README.md");
+
+var sourcePaths = [
+  Path.join(docsDir, "boco-ioc.coffee.md"),
+  Path.join(docsDir, "usage.coffee.md"),
+  Path.join(packageDir, "LICENSE.md")
+];
+
+File.writeFileSync(targetPath, "");
+
+sourcePaths.forEach(function(sourcePath) {
+  var data = File.readFileSync(sourcePath);
+  File.appendFileSync(targetPath, data);
+});
