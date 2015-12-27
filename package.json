@@ -11,22 +11,22 @@
   "homepage": "https://github.com/bocodigitalmedia/boco-ioc",
   "bugs": "https://github.com/bocodigitalmedia/boco-ioc/issues",
   "repository": "bocodigitalmedia/boco-ioc",
-  "main": "boco-ioc/index.js",
+  "main": "build/index.js",
   "dependencies": {
     "async": "^1.5.0",
     "when": "^3.7.4"
   },
   "devDependencies": {
-    "coffee-script": "^1.10.0"
+    "coffee-script": "^1.10.0",
+    "boco-markdown-driven": "^0.3.6",
+    "boco-mdd-jasmine-coffee": "^0.3.2",
+    "jasmine": "^2.4.1"
   },
   "scripts": {
-    "test": "NODE_PATH=$NODE_PATH:. ./bin/coffee -l README.md",
-    "clean": "rm -rf boco-ioc/**/*.js boco-ioc/**/*.map",
-    "compile-source": "./bin/coffee -o boco-ioc -cmb source",
-    "compile-readme": "./bin/readme",
-    "compile": "npm run compile-source && npm run compile-readme",
-    "preinstall": "npm run clean && npm run compile",
-    "preversion": "npm run clean && npm run compile && npm test"
+    "test": "./bin/shake npm_test",
+    "preversion": "./bin/shake npm_preversion",
+    "version": "./bin/shake npm_version",
+    "postversion": "./bin/shake npm_postversion"
   },
   "author": "Christian Bradley <christian.bradley@bocodigital.com>",
   "license": "MIT"
