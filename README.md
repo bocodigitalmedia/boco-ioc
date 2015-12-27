@@ -1,6 +1,8 @@
 # boco-ioc
 
-[![npm version](https://badge.fury.io/js/boco-ioc.svg)](https://badge.fury.io/js/boco-ioc)
+![npm version](https://img.shields.io/npm/v/boco-ioc.svg)
+![npm license](https://img.shields.io/npm/l/boco-ioc.svg)
+![dependencies](https://david-dm.org/bocodigitalmedia/boco-ioc.png)
 
 Inversion of Control & Dependency Injection for javascript.
 
@@ -9,40 +11,52 @@ Inversion of Control & Dependency Injection for javascript.
 * Lazy-loads dependencies
 * Automatically maintains dependency cache
 
-Installation options:
+## Installation
 
-* [npm] `npm install boco-ioc`
+Installation is available via [npm]
 
-[npm]: https://npmjs.org
+```sh
+$ npm install boco-ioc
+```
 
-# Usage
+## Usage
 
-    IOC = require './source'
-    container = new IOC.Container
-    assert = require 'assert'
+Create a container, then define some components:
 
-    # You can define components using a properties hash
-    container.defineComponent "foo",
-      dependencies: null
-      factory: (done) -> done null, "FOO"
+```coffee
+IOC = require 'boco-ioc'
+container = new IOC.Container
 
-    # Or pass in the dependencies and factory as arguments
-    container.defineComponent "bar", null, (done) ->
-      done null, "BAR"
+# You can define components using a properties hash
+container.defineComponent "foo",
+  dependencies: null
+  factory: (done) -> done null, "FOO"
 
-    # Or determine the dependencies automatically
-    container.defineComponent "foobar", (foo, bar, done) ->
-      done null, foo + bar
+# Or pass in the dependencies and factory as arguments
+container.defineComponent "bar", null, (done) ->
+  done null, "BAR"
 
-    container.resolveComponent "foobar", (error, foobar) ->
-      throw error if error?
-      assert.equal foobar, "FOOBAR"
+# Or determine the dependencies automatically
+container.defineComponent "foobar", (foo, bar, done) ->
+  done null, foo + bar
+```
 
-# License
+### Resolving a Component
 
-The MIT License (MIT)
+Given a component name, the container will resolve that component:
 
-Copyright (c) [2015] [Christian Bradley]
+```coffee
+container.resolveComponent "foobar", (error, foobar) ->
+  throw error if error?
+  expect(foobar).toEqual "FOOBAR"
+  ok()
+```
+
+[npm]: http://npmjs.org
+
+---
+
+Copyright (c) 2015 Christian Bradley + Boco Digital Media, LLC
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -51,13 +65,13 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
