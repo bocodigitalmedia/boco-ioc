@@ -250,7 +250,7 @@ configure = (configuration) ->
       try
         @components.validate(name) unless @promises.isDefined(name)
         @ensureComponentPromiseSet(name)
-        @promises.get(name).then done.bind(null, null), done
+        @promises.get(name).done done.bind(null, null), done
       catch error then done error
 
   class Component
