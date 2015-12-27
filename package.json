@@ -1,6 +1,6 @@
 {
   "name": "boco-ioc",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Inversion of Control (IOC) & Dependency Injection (DI) for javascript",
   "keywords": [
     "inversion of control",
