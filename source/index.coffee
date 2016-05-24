@@ -1,9 +1,8 @@
-configure = ({Async, Promise, Path, promiseCallback} = {}) ->
+configure = ({Async, Promise, promiseCallback} = {}) ->
 
   if typeof require is 'function'
     Async ?= require 'async'
     Promise ?= require 'bluebird'
-    Path ?= require 'path'
 
   promiseCallback ?= (promise, done) ->
     fn = if typeof promise.done is 'function' then 'done' else 'then'
@@ -95,7 +94,6 @@ configure = ({Async, Promise, Path, promiseCallback} = {}) ->
       throw NotImplemented()
 
     inject: (injections, done) ->
-      console.log @key, @getFactoryType(), injections
 
       switch @getFactoryType()
         when 'promise' then @injectPromiseFactory injections, done
@@ -139,7 +137,6 @@ configure = ({Async, Promise, Path, promiseCallback} = {}) ->
       injectionKeys = (key for own key of @dependencies)
       injectionObject = injectionKeys.reduce collectInjections, {}
 
-      console.log @key, 'injectionObject', injectionObject
       injectionObject
 
     injectSyncFactory: (injections, done) ->
