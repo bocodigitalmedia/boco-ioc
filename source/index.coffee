@@ -1,374 +1,275 @@
-configure = (configuration) ->
+configure = ({Async, Promise, promiseCallback} = {}) ->
 
-  class Configuration
+  if typeof require is 'function'
+    Async ?= require 'async'
+    Promise ?= require 'bluebird'
 
-    constructor: (props = {}) ->
-      @[key] = val for own key,val of props
+  promiseCallback ?= (promise, done) ->
+    fn = if typeof promise.done is 'function' then 'done' else 'then'
 
-    require: (name) ->
-      require name
-
-    getFunctionArguments: (fn) ->
-      pattern = /\(([^)]*)\)/
-      fn.toString().match(pattern)[1].split /,\s*/
-
-    isObject: (value) ->
-      value? and typeof value is "object"
-
-    isFunction: (value) ->
-      typeof value is "function"
-
-    isArray: (value) ->
-      Array.isArray value
-
-    isEmpty: (value) ->
-      value? and value.length is 0
-
-    assign: (target, sources...) ->
-      sources.forEach (source) ->
-        target[key] = value for own key, value of source
-      return target
-
-    createEventEmitter: ->
-      new (@require("events").EventEmitter)
-
-    createObject: (args...) ->
-      Object.create args...
-
-    defineProperty: (args...) ->
-      Object.defineProperty args...
-
-    defineProperties: (args...) ->
-      Object.defineProperties args...
-
-    createPromise: (resolver) ->
-      @require("when").promise resolver
-
-    asyncMap: (array, mapFn, done) ->
-      @require("async").map array, mapFn, done
-
-    asyncWaterfall: (series, done) ->
-      @require("async").waterfall series, done
+    resolve = (args...) -> done null, args...
+    reject = (error) -> done error
+    promise[fn] resolve, reject
 
   class Exception extends Error
-    name: undefined
+    name: null
+    payload: null
 
-    constructor: (props = {}) ->
-      @[key] = val for own key,val of props
+    constructor: (payload) ->
+      return new Exception payload unless @ instanceof Exception
+      @payload = payload
       @name = @constructor.name
-      @message = @getMessage()
       Error.captureStackTrace @, @constructor
 
-    getMessage: -> @constructor.name
-
   class NotImplemented extends Exception
-    getMessage: -> "Abstract method not implemented."
+    constructor: (payload) ->
+      return new NotImplemented payload unless @ instanceof NotImplemented
+      super payload
+      @message = "Not implemented."
 
-  class StrategyNotFound extends Exception
-    factory: undefined
-    args: undefined
+  class ComponentAlreadyDefined extends Exception
+    constructor: (payload) ->
+      return new ComponentAlreadyDefined payload unless @ instanceof ComponentAlreadyDefined
+      super payload
+      @message = "Component already defined: '#{@payload.key}'."
 
-    getMessage: ->
-      factory = @factory.constructor.name
-      "No strategy found for factory '#{factory}' using arguments: [#{@args}]"
+  class ComponentNotDefined extends Exception
+    constructor: (payload) ->
+      return new ComponentNotDefined payload unless @ instanceof ComponentNotDefined
+      super payload
+      @message = "Component not defined: '#{@payload.key}'."
 
-  class ComponentDependenciesUndefined extends Exception
-    componentName: undefined
-    undefinedDependencies: undefined
+  class ComponentDependenciesNotDefined extends Exception
+    constructor: (payload) ->
+      return new ComponentDependenciesNotDefined payload unless @ instanceof ComponentDependenciesNotDefined
+      super payload
+      @message = "Component '#{@payload.key}' has undefined dependencies: #{@payload.dependencies.join(',')}."
 
-    getMessage: ->
-      "Component '#{@componentName}' " +
-      "has undefined dependencies: [#{@undefinedDependencies}]"
+  class ComponentNotAcyclic extends Exception
+    constructor: (payload) ->
+      return new ComponentNotAcyclic payload unless @ instanceof ComponentNotAcyclic
+      super payload
 
-  class ComponentCyclic extends Exception
-    componentName: undefined
-    cycles: undefined
+      count = @payload.cycles.length
+      cycles = @payload.cycles
+        .map((cycle, index) -> "\t#{index}: #{cycle.join '/'}")
+        .join "\n"
 
-    getMessage: ->
-      "Component '#{@componentName}' has #{@cycles.length} cycle(s): " +
-      @inspectCycles()
-
-    inspectCycles: ->
-      mapFn = (cycle) => "['#{cycle.join("','")}']"
-      @cycles.map(mapFn).join(", ")
-
-  class ComponentUndefined extends Exception
-    componentName: undefined
-
-    getMessage: ->
-      "Component not defined: '#{@componentName}'"
-
-  class DictionaryEvent
-    constructor: (props = {}) ->
-      @name = @constructor.name
-      @setPayload props.payload
-
-    setPayload: (payload = {}) ->
-      @payload = {}
-      @payload.dictionary = payload.dictionary
-      @payload.key = payload.key
-
-  class DictionaryValueSet extends DictionaryEvent
-
-  class DictionaryValueRemoved extends DictionaryEvent
-
-  class Dictionary
-
-    constructor: (props = {}) ->
-      _emitter = props.eventEmitter ? $.createEventEmitter()
-
-      @emit = (args...) -> _emitter.emit args...
-      @addListener = (args...) -> _emitter.addListener args...
-      @removeListener = (args...) -> _emitter.removeListener args...
-      @removeAllListeners = (args...) -> _emitter.removeAllListeners args...
-
-      _definitions = $.assign $.createObject(null), props.definitions
-
-      $.defineProperty @, "definitions", enumerable: true, get: ->
-        $.assign {}, _definitions
-
-      @get = (key) ->
-        _definitions[key]
-
-      @set = (key, value) ->
-        result = _definitions[key] = value
-        @emit "set", new DictionaryValueSet
-          payload: { dictionary: @, key: key }
-        return result
-
-      @remove = (key) ->
-        value = _definitions[key]
-        result = delete _definitions[key]
-        @emit "remove", new DictionaryValueRemoved
-          payload: { dictionary: @, key: key }
-        return result
-
-      @forEach = (callback) =>
-        callback value, key, @ for own key, value of _definitions
-
-    reduce: (reduceFn, memo) ->
-      @forEach (value, key, target) -> memo = reduceFn memo, value, key, target
-      memo
-
-    addListener: (args...) -> @emitter.addListener args...
-    removeListener: (args...) -> @emitter.removeListener args...
-    removeAllListeners: (args...) -> @emitter.removeAllListeners args...
-
-    isDefined: (key) ->
-      @get(key) != undefined
-
-    isUndefined: (key) ->
-      @get(key) == undefined
-
-  class Components extends Dictionary
-
-    getUndefinedDependencies: (name) ->
-      @get(name).dependencies.filter @isUndefined.bind(@)
-
-    getCycles: (name, stack = []) ->
-      return [stack.concat(name)] if stack.indexOf(name) isnt -1
-      return [] unless @isDefined(name)
-      stack = stack.concat name
-
-      reduceDependencyCycles = (memo, dependency) =>
-        memo.concat @getCycles(dependency, stack)
-
-      dependencies = @get(name).dependencies
-      dependencies.reduce reduceDependencyCycles, []
-
-    getParentsOf: (dependee, parents = []) ->
-
-      reduceParents = (parents, component, name) =>
-        return parents if component.dependencies.indexOf(dependee) is -1
-        return parents unless parents.indexOf(name) is -1
-        @getParentsOf name, parents.concat(name)
-
-      @reduce reduceParents, parents
-
-    assertDefined: (name) ->
-      return if @isDefined(name)
-      throw new ComponentUndefined
-        componentName: name
-
-    assertAcyclic: (name) ->
-      cycles = @getCycles name
-      return if cycles.length is 0
-      throw new ComponentCyclic
-        componentName: name
-        cycles: cycles
-
-    assertDependenciesDefined: (name) ->
-      undefinedDependencies = @getUndefinedDependencies name
-      return if undefinedDependencies.length is 0
-      throw new ComponentDependenciesUndefined
-        componentName: name
-        undefinedDependencies: undefinedDependencies
-
-    validate: (name) ->
-      @assertDefined name
-      @assertAcyclic name
-      @assertDependenciesDefined name
-
-  class Promises extends Dictionary
-
-  class Container
-
-    constructor: (props = {}) ->
-      @componentFactory = props.componentFactory ? new ComponentFactory
-      _components = new Components props.components
-      _promises = new Promises props.promises
-
-      _components.addListener "set", (event) =>
-        @handleComponentChange event.payload.key
-
-      _components.addListener "remove", (event) =>
-        @handleComponentChange event.payload.key
-
-      $.defineProperty @, "components", enumerable: true, get: -> _components
-      $.defineProperty @, "promises", enumerable: true, get: -> _promises
-
-    defineComponent: (name, args...) ->
-      component = @componentFactory.construct args...
-      @components.set name, component
-
-    handleComponentChange: (key) ->
-      @promises.remove key
-      @components.getParentsOf(key).forEach (parent) =>
-        @promises.remove parent
-
-    createComponentPromise: (name) ->
-      $.createPromise (resolve, reject) =>
-        @components.get(name).resolve this, (error, result) ->
-          return reject error if error?
-          return resolve result
-
-    ensureComponentPromiseSet: (name) ->
-      return if @promises.isDefined name
-      @promises.set name, @createComponentPromise(name)
-
-    resolveComponent: (name, done) ->
-      try
-        @components.validate(name) unless @promises.isDefined(name)
-        @ensureComponentPromiseSet(name)
-        @promises.get(name).done done.bind(null, null), done
-      catch error then done error
+      @message = "Component '#{@payload.key}' has #{count} dependency cycle(s):\n#{cycles}"
 
   class Component
+    key: null
+    dependencies: null
+    factory: null
+    factoryType: null
 
     constructor: (props = {}) ->
-      _dependencies = props.dependencies.slice() if props.dependencies != null
-      _dependencies ?= []
-      _factory = props.factory
+      @key = props.key
+      @factoryType = props.factoryType ? null
+      @dependencies = props.dependencies ? null
+      @factory = props.factory ? (injections..., done) ->
+        return done NotImplemented() if typeof done is 'function'
+        throw NotImplemented()
 
-      $.defineProperties @,
-        dependencies:
-          enumerable: true, get: -> _dependencies.slice()
-        factory:
-          enumerable: true, get: -> _factory
+    getDependencyKeys: ->
+      throw NotImplemented()
 
-    resolveDependencies: (container, done) ->
-      resolveComponent = container.resolveComponent.bind container
-      $.asyncMap @dependencies, resolveComponent, done
+    guessFactoryType: ->
+      'async'
 
-    applyFactory: (args, done) ->
-      @factory args..., done
+    getFactoryType: ->
+      @factoryType ? @guessFactoryType()
 
-    resolve: (container, done) ->
-      series = Array \
-        @resolveDependencies.bind(this, container),
-        @applyFactory.bind this
+    injectPromiseFactory: (injections, done) ->
+      @injectSyncFactory injections, (error, promise) ->
+        return done error if error?
+        promiseCallback promise, done
 
-      $.asyncWaterfall series, done
+    injectAsyncFactory: (injections, done) ->
+      return done NotImplemented() if typeof done is 'function'
+      throw NotImplemented()
 
-  class Strategies
+    injectSyncFactory: (injections, done) ->
+      return done NotImplemented() if typeof done is 'function'
+      throw NotImplemented()
+
+    inject: (injections, done) ->
+
+      switch @getFactoryType()
+        when 'promise' then @injectPromiseFactory injections, done
+        when 'async' then @injectAsyncFactory injections, done
+        when 'sync' then @injectSyncFactory injections, done
+        else throw Error("Cannot inject component, unknown factoryType: '#{@factoryType}'")
+
+  class ComponentWithDependenciesArray extends Component
+
+    getDependencyKeys: ->
+      @dependencies ? []
+
+    guessFactoryType: ->
+      return 'sync' if @factory.length is @dependencies.length
+      return 'async'
+
+    injectAsyncFactory: (injections, done) ->
+      try @factory injections..., done
+      catch error then done error
+
+    injectSyncFactory: (injections, done) ->
+      try done null, @factory(injections...)
+      catch error then done error
+
+  class ComponentWithDependenciesObject extends Component
+
+    getDependencyKeys: ->
+      ({key, val} for own key, val of @dependencies).map ({key, val}) ->
+        if typeof val is 'string' then val else key
+
+    guessFactoryType: ->
+      return 'sync' if @dependencies.length is 0 and @factory.length is 0
+      return 'sync' if @factory.length is 1
+      return 'async'
+
+    createInjectionObject: (injections) ->
+      collectInjections = (memo, key, index) ->
+        memo[key] = injections[index]
+        memo
+
+      injectionKeys = (key for own key of @dependencies)
+      injectionObject = injectionKeys.reduce collectInjections, {}
+
+      injectionObject
+
+    injectSyncFactory: (injections, done) ->
+      injectionObject = @createInjectionObject injections
+
+      try done null, @factory(injectionObject)
+      catch error then done error
+
+    injectAsyncFactory: (injections, done) ->
+      injectionObject = @createInjectionObject injections
+
+      try @factory injectionObject, done
+      catch error then done error
+
+  class ComponentWithoutDependencies extends Component
+    getDependencyKeys: ->
+      []
+
+    guessFactoryType: ->
+      return 'async' if @factory.length is 1
+      return 'sync'
+
+    injectAsyncFactory: (injections, done) ->
+      try @factory done
+      catch error then done error
+
+    injectSyncFactory: (injections, done) ->
+      try done null, @factory()
+      catch error then done error
+
+  class Container
+    components: null
+    promises: null
+    componentFactory: null
+
     constructor: (props = {}) ->
-      @collection = props.collection ? []
+      @components = props.components ? Object.create(null)
+      @promises = props.promises ? Object.create(null)
+      @componentFactory = props.componentFactory ? new ComponentFactory()
 
-    unshift: (strategy) ->
-      @strategies.unshift strategy
+    defineComponent: (key, args...) ->
+      throw ComponentAlreadyDefined {key} if @components[key]?
+      @components[key] = @componentFactory.construct args...
+      delete @promises[key]
 
-    push: (strategy) ->
-      @collection.push strategy
+    createComponentPromise: (key) ->
+      new Promise (resolve, reject) =>
+        component = @components[key]
+        dependencyKeys = component.getDependencyKeys()
 
-    find: (args...) ->
-      reduceFn = (memo, strategy) ->
-        return memo if memo?
-        return strategy if strategy.test(args...)
-      @collection.reduce reduceFn, null
+        Async.map dependencyKeys, @resolveComponent.bind(@), (error, injections) ->
+          return reject(error) if error?
 
-  class Strategy
-    test: -> throw new NotImplemented
-    use: -> throw new NotImplemented
+          component.inject injections, (error, result) ->
+            if error? then reject(error) else resolve(result)
 
-  class PropertiesStrategy extends Strategy
-    test: (props, rest...) ->
-      use = $.isEmpty(rest) and
-            $.isObject(props) and
-            $.isFunction(props.factory)
+    isComponentDefined: (key) ->
+      @components[key]?
 
-    constructComponent: (props) ->
-      new Component props
+    assertComponentDefined: (key) ->
+      throw ComponentNotDefined {key} unless @isComponentDefined(key)
 
-    use: (props) ->
-      @constructComponent props
+    assertComponentDependenciesDefined: (key) ->
+      component = @components[key]
+      dependencies = component.getDependencyKeys().filter (key) => !@isComponentDefined(key)
 
-  class ArgumentsStrategy extends Strategy
-    test: (dependencies = [], factory, rest...) ->
-      use = $.isEmpty(rest) and
-            $.isArray(dependencies) and
-            $.isFunction(factory)
+      throw ComponentDependenciesNotDefined {key, dependencies} if dependencies.length
 
-    use: (dependencies = [], factory) ->
-      new Component dependencies: dependencies, factory: factory
+    getComponentCycles: (key, stack = []) ->
+      return [stack.concat(key)] if key in stack
 
-  class AutoFactoryStrategy extends Strategy
-    test: (factory, rest...) ->
-      use = $.isEmpty(rest) and
-            $.isFunction(factory)
+      component = @components[key]
+      return [] unless component?
 
-    use: (factory) ->
-      dependencies = $.getFunctionArguments(factory)[0...-1]
-      new Component dependencies: dependencies, factory: factory
+      stack = stack.concat key
+
+      reduceDependencyCycles = (memo, key) =>
+        memo.concat @getComponentCycles(key, stack)
+
+      dependencyKeys = component.getDependencyKeys()
+      dependencyKeys.reduce reduceDependencyCycles, []
+
+    assertComponentAcyclic: (key) ->
+      cycles = @getComponentCycles key
+      throw ComponentNotAcyclic {key, cycles} if cycles.length
+
+    validateComponent: (key) ->
+      @assertComponentDefined key
+      @assertComponentDependenciesDefined key
+      @assertComponentAcyclic key
+
+    validateComponents: ->
+      @validateComponent key for own key of @components
+
+    resolveComponent: (key, done) ->
+
+      unless @promises[key]
+        try @validateComponent key
+        catch error then done error
+        @promises[key] = @createComponentPromise key
+
+      promiseCallback @promises[key], done
 
   class ComponentFactory
-    constructor: (props = {}) ->
-      @strategies = props.strategies
 
-      unless @strategies?
-        @strategies = new Strategies
-        @strategies.push new PropertiesStrategy
-        @strategies.push new ArgumentsStrategy
-        @strategies.push new AutoFactoryStrategy
+    construct: ({key, dependencies, depends, factory, factoryType}) ->
+      dependencies ?= depends
 
-    construct: (args...) ->
-      strategy = @strategies.find args...
-      throw new StrategyNotFound factory: this, args: args unless strategy?
-      strategy.use args...
+      unless dependencies?
+        return new ComponentWithoutDependencies {key, factory, factoryType}
 
-  $ = new Configuration configuration
+      if Array.isArray dependencies
+        return new ComponentWithDependenciesArray {key, dependencies, factory, factoryType}
 
-  IOC =
-    configuration: $
-    configure: configure
-    Configuration: Configuration
-    Exception: Exception
-    NotImplemented: NotImplemented
-    StrategyNotFound: StrategyNotFound
-    ComponentCyclic: ComponentCyclic
-    ComponentDependenciesUndefined: ComponentDependenciesUndefined
-    ComponentUndefined: ComponentUndefined
-    Component: Component
-    Components: Components
-    Container: Container
-    Dictionary: Dictionary
-    DictionaryEvent: DictionaryEvent
-    DictionaryValueSet: DictionaryValueSet
-    DictionaryValueRemoved: DictionaryValueRemoved
-    Promises: Promises
-    Strategies: Strategies
-    Strategy: Strategy
-    ComponentFactory: ComponentFactory
-    PropertiesStrategy: PropertiesStrategy
-    ArgumentsStrategy: ArgumentsStrategy
+      if typeof dependencies is 'object'
+        return new ComponentWithDependenciesObject {key, dependencies, factory, factoryType}
+
+      throw Error "Cannot construct component, invalid dependencies."
+
+  IOC = {
+    configure,
+    Container,
+    ComponentFactory,
+    Component,
+    ComponentWithoutDependencies,
+    ComponentWithDependenciesObject,
+    ComponentWithDependenciesArray,
+    Exception,
+    NotImplemented,
+    ComponentNotDefined,
+    ComponentDependenciesNotDefined,
+    ComponentNotAcyclic,
+    ComponentAlreadyDefined
+  }
 
 module.exports = configure()
