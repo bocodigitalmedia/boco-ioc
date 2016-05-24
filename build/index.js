@@ -6,14 +6,20 @@ var configure,
   indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
 configure = function(arg) {
-  var Async, Component, ComponentAlreadyDefined, ComponentDependenciesNotDefined, ComponentFactory, ComponentNotAcyclic, ComponentNotDefined, ComponentWithDependenciesArray, ComponentWithDependenciesObject, ComponentWithoutDependencies, Container, Exception, IOC, NotImplemented, Promise, promiseCallback, ref;
-  ref = arg != null ? arg : {}, Async = ref.Async, Promise = ref.Promise, promiseCallback = ref.promiseCallback;
+  var Async, Component, ComponentAlreadyDefined, ComponentDependenciesNotDefined, ComponentFactory, ComponentLoader, ComponentNotAcyclic, ComponentNotDefined, ComponentWithDependenciesArray, ComponentWithDependenciesObject, ComponentWithoutDependencies, Container, Exception, Glob, IOC, NotImplemented, Path, Promise, promiseCallback, ref;
+  ref = arg != null ? arg : {}, Async = ref.Async, Promise = ref.Promise, Glob = ref.Glob, Path = ref.Path, promiseCallback = ref.promiseCallback;
   if (typeof require === 'function') {
     if (Async == null) {
       Async = require('async');
     }
     if (Promise == null) {
       Promise = require('bluebird');
+    }
+    if (Glob == null) {
+      Glob = require('glob');
+    }
+    if (Path == null) {
+      Path = require('path');
     }
   }
   if (promiseCallback == null) {
@@ -559,6 +565,32 @@ configure = function(arg) {
     return ComponentFactory;
 
   })();
+  ComponentLoader = (function() {
+    function ComponentLoader() {}
+
+    ComponentLoader.prototype.load = function(arg1) {
+      var componentsDir, container, pattern;
+      container = arg1.container, componentsDir = arg1.componentsDir, pattern = arg1.pattern;
+      if (componentsDir == null) {
+        componentsDir = Path.resolve(__dirname, "components");
+      }
+      if (pattern == null) {
+        pattern = "**/*(*.coffee|*.js)";
+      }
+      return Glob.sync(pattern, {
+        cwd: componentsDir
+      }).forEach(function(componentPath) {
+        var base, definition, dir, ext, key, name, ref1;
+        ref1 = Path.parse(componentPath), dir = ref1.dir, base = ref1.base, ext = ref1.ext, name = ref1.name;
+        key = dir === '.' ? name : Path.join(dir, name);
+        definition = require(Path.resolve(componentsDir, dir, base));
+        return container.defineComponent(key, definition);
+      });
+    };
+
+    return ComponentLoader;
+
+  })();
   return IOC = {
     configure: configure,
     Container: Container,
@@ -572,7 +604,8 @@ configure = function(arg) {
     ComponentNotDefined: ComponentNotDefined,
     ComponentDependenciesNotDefined: ComponentDependenciesNotDefined,
     ComponentNotAcyclic: ComponentNotAcyclic,
-    ComponentAlreadyDefined: ComponentAlreadyDefined
+    ComponentAlreadyDefined: ComponentAlreadyDefined,
+    ComponentLoader: ComponentLoader
   };
 };
 

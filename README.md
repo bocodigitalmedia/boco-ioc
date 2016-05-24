@@ -85,6 +85,23 @@ container.resolveComponent 'joined/all', (error, result) ->
   expect(result).toEqual 'FooBarBarBazBazQux'
   ok()
 ```
+### Loading Components
+
+Load all components from a given directory. The relative path name will be used as the component id.
+
+```coffee
+Path = require 'path'
+
+loader = new IOC.ComponentLoader
+componentsDir = './components'
+pattern = '**/*(*.coffee)'
+
+loader.load {container, componentsDir, pattern}
+
+container.resolveComponent 'examples/one', (error, result) ->
+  throw error if error?
+  expect(result).toEqual 1
+```
 
 [npm]: http://npmjs.org
 
