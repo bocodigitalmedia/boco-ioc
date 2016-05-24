@@ -7,7 +7,7 @@
 Inversion of Control & Dependency Injection for javascript.
 
 * Highly configurable
-* Supports asynchronous dependencies
+* Supports asynchronous dependency factories as well as promises
 * Lazy-loads dependencies
 * Automatically maintains dependency cache
 
@@ -21,24 +21,50 @@ $ npm install boco-ioc
 
 ## Usage
 
-Create a container, then define some components:
-
 ```coffee
 IOC = require 'boco-ioc'
+Promise = require 'bluebird'
+
+# Create a container
 container = new IOC.Container
 
-# You can define components using a properties hash
-container.defineComponent "foo",
-  dependencies: null
-  factory: (done) -> done null, "FOO"
+# define a component with a synchronous factory
+container.defineComponent 'foo',
+  factory: -> 'Foo'
 
-# Or pass in the dependencies and factory as arguments
-container.defineComponent "bar", null, (done) ->
-  done null, "BAR"
+# define a component with an asynchronous factory (callback)
+container.defineComponent 'bar',
+  factory: (done) -> done null, 'Bar'
 
-# Or determine the dependencies automatically
-container.defineComponent "foobar", (foo, bar, done) ->
-  done null, foo + bar
+# define a component by returning a promise from your factory
+# note: you must set the `factoryType` to 'promise'
+container.defineComponent 'baz',
+  factoryType: 'promise'
+  factory: -> Promise.resolve 'Baz'
+
+# any string value can be used as your component id
+container.defineComponent 'qux/value',
+  factory: -> 'Qux'
+
+# an array of dependencies gets injected as ordered arguments
+container.defineComponent 'joined/foo+bar',
+  depends: ['foo', 'bar']
+  factory: (foo, bar) -> foo + bar
+
+# a dependency map gets injected as a single object
+container.defineComponent 'joined/bar+baz',
+  dependencies:
+    bar: true
+    baz: true
+  factory: ({bar, baz}, done) -> done null, bar + baz
+
+# you can specify the id of your components in a dependency map
+container.defineComponent 'joined/baz+qux',
+  dependencies:
+    baz: true
+    qux: 'qux/value'
+  factoryType: 'promise'
+  factory: ({baz, qux}) -> Promise.resolve baz + qux
 ```
 
 ### Resolving a Component
@@ -46,9 +72,17 @@ container.defineComponent "foobar", (foo, bar, done) ->
 Given a component name, the container will resolve that component:
 
 ```coffee
-container.resolveComponent "foobar", (error, foobar) ->
+container.defineComponent 'joined/all',
+  dependencies:
+    fooBar: 'joined/foo+bar'
+    barBaz: 'joined/bar+baz'
+    bazQux: 'joined/baz+qux'
+  factory: ({fooBar, barBaz, bazQux}) ->
+    fooBar + barBaz + bazQux
+
+container.resolveComponent 'joined/all', (error, result) ->
   throw error if error?
-  expect(foobar).toEqual "FOOBAR"
+  expect(result).toEqual 'FooBarBarBazBazQux'
   ok()
 ```
 
