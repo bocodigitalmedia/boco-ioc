@@ -1,6 +1,6 @@
 {
   "name": "boco-ioc",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Inversion of Control (IOC) & Dependency Injection (DI) for javascript",
   "keywords": [
     "inversion of control",
@@ -14,7 +14,8 @@
   "main": "build/index.js",
   "dependencies": {
     "async": "^1.5.2",
-    "bluebird": "^3.4.0"
+    "bluebird": "^3.4.0",
+    "glob": "^7.0.3"
   },
   "devDependencies": {
     "boco-markdown-driven": "^0.3.6",
