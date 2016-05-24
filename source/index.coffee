@@ -264,9 +264,14 @@ configure = ({Async, Promise, Glob, Path, promiseCallback} = {}) ->
       pattern ?= "**/*(*.coffee|*.js)"
 
       Glob.sync(pattern, cwd: componentsDir).forEach (componentPath) ->
-        {dir, base, ext, name} = Path.parse componentPath
-        key = if dir is '.' then name else Path.join(dir, name)
-        definition = require Path.resolve(componentsDir, dir, base)
+        dirname = Path.dirname componentPath
+        filename = Path.basename componentPath
+        extname = Path.extname componentPath
+        modname = do ->
+          filename.slice 0, filename.length - extname.length
+
+        key = if dirname is '.' then modname else Path.join(dirname, modname)
+        definition = require Path.resolve(componentsDir, dirname, filename)
         container.defineComponent key, definition
 
   IOC = {
