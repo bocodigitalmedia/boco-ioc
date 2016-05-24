@@ -580,10 +580,15 @@ configure = function(arg) {
       return Glob.sync(pattern, {
         cwd: componentsDir
       }).forEach(function(componentPath) {
-        var base, definition, dir, ext, key, name, ref1;
-        ref1 = Path.parse(componentPath), dir = ref1.dir, base = ref1.base, ext = ref1.ext, name = ref1.name;
-        key = dir === '.' ? name : Path.join(dir, name);
-        definition = require(Path.resolve(componentsDir, dir, base));
+        var definition, dirname, extname, filename, key, modname;
+        dirname = Path.dirname(componentPath);
+        filename = Path.basename(componentPath);
+        extname = Path.extname(componentPath);
+        modname = (function() {
+          return filename.slice(0, filename.length - extname.length);
+        })();
+        key = dirname === '.' ? modname : Path.join(dirname, modname);
+        definition = require(Path.resolve(componentsDir, dirname, filename));
         return container.defineComponent(key, definition);
       });
     };
