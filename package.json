@@ -14,7 +14,8 @@
   "main": "build/index.js",
   "dependencies": {
     "async": "^1.5.2",
-    "bluebird": "^3.4.0"
+    "bluebird": "^3.4.0",
+    "glob": "^7.0.3"
   },
   "devDependencies": {
     "boco-markdown-driven": "^0.3.6",

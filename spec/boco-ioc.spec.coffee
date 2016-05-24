@@ -65,3 +65,18 @@ describe "boco-ioc", ->
           throw error if error?
           expect(result).toEqual 'FooBarBarBazBazQux'
           ok()
+
+    describe "Loading Components", ->
+
+      it "Load all components from a given directory. The relative path name will be used as the component id.", ->
+        Path = require 'path'
+        
+        loader = new IOC.ComponentLoader
+        componentsDir = './components'
+        pattern = '**/*(*.coffee)'
+        
+        loader.load {container, componentsDir, pattern}
+        
+        container.resolveComponent 'examples/one', (error, result) ->
+          throw error if error?
+          expect(result).toEqual 1

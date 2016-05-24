@@ -1,12 +1,13 @@
-configure = ({Async, Promise, promiseCallback} = {}) ->
+configure = ({Async, Promise, Glob, Path, promiseCallback} = {}) ->
 
   if typeof require is 'function'
     Async ?= require 'async'
     Promise ?= require 'bluebird'
+    Glob ?= require 'glob'
+    Path ?= require 'path'
 
   promiseCallback ?= (promise, done) ->
     fn = if typeof promise.done is 'function' then 'done' else 'then'
-
     resolve = (args...) -> done null, args...
     reject = (error) -> done error
     promise[fn] resolve, reject
@@ -256,6 +257,18 @@ configure = ({Async, Promise, promiseCallback} = {}) ->
 
       throw Error "Cannot construct component, invalid dependencies."
 
+  class ComponentLoader
+
+    load: ({container, componentsDir, pattern}) ->
+      componentsDir ?= Path.resolve __dirname, "components"
+      pattern ?= "**/*(*.coffee|*.js)"
+
+      Glob.sync(pattern, cwd: componentsDir).forEach (componentPath) ->
+        {dir, base, ext, name} = Path.parse componentPath
+        key = if dir is '.' then name else Path.join(dir, name)
+        definition = require Path.resolve(componentsDir, dir, base)
+        container.defineComponent key, definition
+
   IOC = {
     configure,
     Container,
@@ -270,6 +283,7 @@ configure = ({Async, Promise, promiseCallback} = {}) ->
     ComponentDependenciesNotDefined,
     ComponentNotAcyclic,
     ComponentAlreadyDefined
+    ComponentLoader
   }
 
 module.exports = configure()
