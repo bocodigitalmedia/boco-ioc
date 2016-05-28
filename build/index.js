@@ -6,8 +6,8 @@ var configure,
   indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
 configure = function(arg) {
-  var Async, Component, ComponentAlreadyDefined, ComponentDependenciesNotDefined, ComponentFactory, ComponentLoader, ComponentNotAcyclic, ComponentNotDefined, ComponentTimedOut, ComponentWithDependenciesArray, ComponentWithDependenciesObject, ComponentWithoutDependencies, Container, Exception, Glob, IOC, NotImplemented, Path, Promise, promiseCallback, ref;
-  ref = arg != null ? arg : {}, Async = ref.Async, Promise = ref.Promise, Glob = ref.Glob, Path = ref.Path, promiseCallback = ref.promiseCallback;
+  var Async, Component, ComponentAlreadyDefined, ComponentDependenciesNotDefined, ComponentFactory, ComponentLoader, ComponentNotAcyclic, ComponentNotDefined, ComponentTimedOut, ComponentWithDependenciesArray, ComponentWithDependenciesObject, ComponentWithoutDependencies, Container, EventEmitter, Exception, Glob, IOC, NotImplemented, Path, Promise, promiseCallback, ref;
+  ref = arg != null ? arg : {}, Async = ref.Async, Promise = ref.Promise, Glob = ref.Glob, Path = ref.Path, EventEmitter = ref.EventEmitter, promiseCallback = ref.promiseCallback;
   if (typeof require === 'function') {
     if (Async == null) {
       Async = require('async');
@@ -20,6 +20,9 @@ configure = function(arg) {
     }
     if (Path == null) {
       Path = require('path');
+    }
+    if (EventEmitter == null) {
+      EventEmitter = require('events').EventEmitter;
     }
   }
   if (promiseCallback == null) {
@@ -276,18 +279,18 @@ configure = function(arg) {
     ComponentWithDependenciesObject.prototype.getDependencyKeys = function() {
       var key, val;
       return ((function() {
-        var ref1, results1;
+        var ref1, results;
         ref1 = this.dependencies;
-        results1 = [];
+        results = [];
         for (key in ref1) {
           if (!hasProp.call(ref1, key)) continue;
           val = ref1[key];
-          results1.push({
+          results.push({
             key: key,
             val: val
           });
         }
-        return results1;
+        return results;
       }).call(this)).map(function(arg1) {
         var key, val;
         key = arg1.key, val = arg1.val;
@@ -316,14 +319,14 @@ configure = function(arg) {
         return memo;
       };
       injectionKeys = (function() {
-        var ref1, results1;
+        var ref1, results;
         ref1 = this.dependencies;
-        results1 = [];
+        results = [];
         for (key in ref1) {
           if (!hasProp.call(ref1, key)) continue;
-          results1.push(key);
+          results.push(key);
         }
-        return results1;
+        return results;
       }).call(this);
       injectionObject = injectionKeys.reduce(collectInjections, {});
       return injectionObject;
@@ -405,15 +408,40 @@ configure = function(arg) {
     Container.prototype.componentTimeout = null;
 
     function Container(props) {
-      var ref1, ref2, ref3, ref4;
+      var ref1, ref2, ref3, ref4, ref5;
       if (props == null) {
         props = {};
       }
       this.components = (ref1 = props.components) != null ? ref1 : Object.create(null);
       this.promises = (ref2 = props.promises) != null ? ref2 : Object.create(null);
-      this.componentFactory = (ref3 = props.componentFactory) != null ? ref3 : new ComponentFactory();
+      this.componentFactory = (ref3 = props.componentFactory) != null ? ref3 : new ComponentFactory;
       this.componentTimeout = (ref4 = props.componentTimeout) != null ? ref4 : 30000;
+      this.emitter = (ref5 = props.emitter) != null ? ref5 : new EventEmitter;
     }
+
+    Container.prototype.on = function() {
+      var args, ref1;
+      args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
+      return (ref1 = this.emitter).on.apply(ref1, args);
+    };
+
+    Container.prototype.once = function() {
+      var args, ref1;
+      args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
+      return (ref1 = this.emitter).once.apply(ref1, args);
+    };
+
+    Container.prototype.removeListener = function() {
+      var args, ref1;
+      args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
+      return (ref1 = this.emitter).removeListener.apply(ref1, args);
+    };
+
+    Container.prototype.removeAllListeners = function() {
+      var args, ref1;
+      args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
+      return (ref1 = this.emitter).removeAllListeners.apply(ref1, args);
+    };
 
     Container.prototype.defineComponent = function() {
       var args, key, ref1;
@@ -424,23 +452,39 @@ configure = function(arg) {
         });
       }
       this.components[key] = (ref1 = this.componentFactory).construct.apply(ref1, args);
-      return delete this.promises[key];
+      delete this.promises[key];
+      return this.emitter.emit("component.defined", {
+        key: key,
+        container: this
+      });
     };
 
     Container.prototype.createComponentPromise = function(key) {
+      this.emitter.emit("component.resolving", {
+        key: key,
+        container: this
+      });
       return new Promise((function(_this) {
         return function(resolve, reject) {
           var component, dependencyKeys, done, timeoutId;
-          done = function() {
-            var error, results;
-            error = arguments[0], results = 2 <= arguments.length ? slice.call(arguments, 1) : [];
+          done = function(error, result) {
             if (typeof timeoutId !== "undefined" && timeoutId !== null) {
               clearTimeout(timeoutId);
             }
             if (error != null) {
-              return reject(error);
+              reject(error);
+              return _this.emitter.emit('component.error', {
+                key: key,
+                container: _this,
+                error: error
+              });
             } else {
-              return resolve.apply(null, results);
+              resolve(result);
+              return _this.emitter.emit('component.resolved', {
+                key: key,
+                container: _this,
+                result: result
+              });
             }
           };
           timeoutId = setTimeout(done.bind(null, ComponentTimedOut({
@@ -526,14 +570,14 @@ configure = function(arg) {
     };
 
     Container.prototype.validateComponents = function() {
-      var key, ref1, results1;
+      var key, ref1, results;
       ref1 = this.components;
-      results1 = [];
+      results = [];
       for (key in ref1) {
         if (!hasProp.call(ref1, key)) continue;
-        results1.push(this.validateComponent(key));
+        results.push(this.validateComponent(key));
       }
-      return results1;
+      return results;
     };
 
     Container.prototype.resolveComponent = function(key, done) {

@@ -121,4 +121,31 @@ timeoutContainer.resolveComponent 'timeout/example', (error) ->
   ok()
 ```
 
+### Events
+
+The container will emit events that you can observe as the components are being resolved.
+
+```coffee
+container = new IOC.Container
+
+componentResolving = false
+
+container.once 'component.resolving', ({key, container}) ->
+  componentResolving = true
+  expect(key).toEqual 'events/example'
+
+container.once 'component.resolved', ({key, container, result}) ->
+  expect(componentResolving).toBe true
+  expect(key).toEqual 'events/example'
+  expect(result).toEqual 'example'
+  ok()
+
+container.defineComponent 'events/example',
+  factoryType: 'async'
+  factory: (done) -> done null, 'example'
+
+container.resolveComponent 'events/example', (error) ->
+  throw error if error?
+```
+
 [npm]: http://npmjs.org
