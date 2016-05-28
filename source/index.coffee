@@ -1,10 +1,11 @@
-configure = ({Async, Promise, Glob, Path, promiseCallback} = {}) ->
+configure = ({Async, Promise, Glob, Path, EventEmitter, promiseCallback} = {}) ->
 
   if typeof require is 'function'
     Async ?= require 'async'
     Promise ?= require 'bluebird'
     Glob ?= require 'glob'
     Path ?= require 'path'
+    EventEmitter ?= require('events').EventEmitter
 
   promiseCallback ?= (promise, done) ->
     fn = if typeof promise.done is 'function' then 'done' else 'then'
@@ -183,20 +184,46 @@ configure = ({Async, Promise, Glob, Path, promiseCallback} = {}) ->
     constructor: (props = {}) ->
       @components = props.components ? Object.create(null)
       @promises = props.promises ? Object.create(null)
-      @componentFactory = props.componentFactory ? new ComponentFactory()
+      @componentFactory = props.componentFactory ? new ComponentFactory
       @componentTimeout = props.componentTimeout ? 30000
+      @emitter = props.emitter ? new EventEmitter
+
+    on: (args...) -> @emitter.on args...
+    once: (args...) -> @emitter.once args...
+    removeListener: (args...) -> @emitter.removeListener args...
+    removeAllListeners: (args...) -> @emitter.removeAllListeners args...
 
     defineComponent: (key, args...) ->
       throw ComponentAlreadyDefined {key} if @components[key]?
       @components[key] = @componentFactory.construct args...
       delete @promises[key]
 
+      @emitter.emit "component.defined",
+        key: key
+        container: @
+
     createComponentPromise: (key) ->
+      @emitter.emit "component.resolving",
+        key: key
+        container: @
+
       new Promise (resolve, reject) =>
 
-        done = (error, results...) ->
+        done = (error, result) =>
           clearTimeout timeoutId if timeoutId?
-          if error? then reject(error) else resolve(results...)
+
+          if error?
+            reject error
+            @emitter.emit 'component.error',
+              key: key
+              container: @
+              error: error
+          else
+            resolve result
+            @emitter.emit 'component.resolved',
+              key: key
+              container: @
+              result: result
 
         timeoutId = setTimeout done.bind(null, ComponentTimedOut({key})), @componentTimeout
         component = @components[key]
