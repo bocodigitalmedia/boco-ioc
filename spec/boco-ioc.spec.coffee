@@ -95,3 +95,27 @@ describe "boco-ioc", ->
         timeoutContainer.resolveComponent 'timeout/example', (error) ->
           expect(error.name).toEqual "ComponentTimedOut"
           ok()
+
+    describe "Events", ->
+
+      it "The container will emit events that you can observe as the components are being resolved.", (ok) ->
+        container = new IOC.Container
+        
+        componentResolving = false
+        
+        container.once 'component.resolving', ({key, container}) ->
+          componentResolving = true
+          expect(key).toEqual 'events/example'
+        
+        container.once 'component.resolved', ({key, container, result}) ->
+          expect(componentResolving).toBe true
+          expect(key).toEqual 'events/example'
+          expect(result).toEqual 'example'
+          ok()
+        
+        container.defineComponent 'events/example',
+          factoryType: 'async'
+          factory: (done) -> done null, 'example'
+        
+        container.resolveComponent 'events/example', (error) ->
+          throw error if error?
