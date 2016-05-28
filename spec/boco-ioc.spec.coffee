@@ -80,3 +80,18 @@ describe "boco-ioc", ->
         container.resolveComponent 'examples/one', (error, result) ->
           throw error if error?
           expect(result).toEqual 1
+
+    describe "Timouts", ->
+
+      it "A `ComponentTimedOut` exception will be raised if a component is not resolved within the `componentTimeout` period specified.", (ok) ->
+        timeoutContainer = new IOC.Container componentTimeout: 1000
+        
+        timeoutContainer.defineComponent 'timeout/example',
+          depends: null
+          factoryType: 'async'
+          factory: (done) ->
+            setTimeout done.bind(null, null, "Should not get here"), 1500
+        
+        timeoutContainer.resolveComponent 'timeout/example', (error) ->
+          expect(error.name).toEqual "ComponentTimedOut"
+          ok()

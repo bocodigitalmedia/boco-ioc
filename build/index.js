@@ -6,7 +6,7 @@ var configure,
   indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
 configure = function(arg) {
-  var Async, Component, ComponentAlreadyDefined, ComponentDependenciesNotDefined, ComponentFactory, ComponentLoader, ComponentNotAcyclic, ComponentNotDefined, ComponentWithDependenciesArray, ComponentWithDependenciesObject, ComponentWithoutDependencies, Container, Exception, Glob, IOC, NotImplemented, Path, Promise, promiseCallback, ref;
+  var Async, Component, ComponentAlreadyDefined, ComponentDependenciesNotDefined, ComponentFactory, ComponentLoader, ComponentNotAcyclic, ComponentNotDefined, ComponentTimedOut, ComponentWithDependenciesArray, ComponentWithDependenciesObject, ComponentWithoutDependencies, Container, Exception, Glob, IOC, NotImplemented, Path, Promise, promiseCallback, ref;
   ref = arg != null ? arg : {}, Async = ref.Async, Promise = ref.Promise, Glob = ref.Glob, Path = ref.Path, promiseCallback = ref.promiseCallback;
   if (typeof require === 'function') {
     if (Async == null) {
@@ -56,6 +56,20 @@ configure = function(arg) {
     return Exception;
 
   })(Error);
+  ComponentTimedOut = (function(superClass) {
+    extend(ComponentTimedOut, superClass);
+
+    function ComponentTimedOut(payload) {
+      if (!(this instanceof ComponentTimedOut)) {
+        return new ComponentTimedOut(payload);
+      }
+      ComponentTimedOut.__super__.constructor.call(this, payload);
+      this.message = "Component '" + this.payload.key + "' timed out.";
+    }
+
+    return ComponentTimedOut;
+
+  })(Exception);
   NotImplemented = (function(superClass) {
     extend(NotImplemented, superClass);
 
@@ -262,18 +276,18 @@ configure = function(arg) {
     ComponentWithDependenciesObject.prototype.getDependencyKeys = function() {
       var key, val;
       return ((function() {
-        var ref1, results;
+        var ref1, results1;
         ref1 = this.dependencies;
-        results = [];
+        results1 = [];
         for (key in ref1) {
           if (!hasProp.call(ref1, key)) continue;
           val = ref1[key];
-          results.push({
+          results1.push({
             key: key,
             val: val
           });
         }
-        return results;
+        return results1;
       }).call(this)).map(function(arg1) {
         var key, val;
         key = arg1.key, val = arg1.val;
@@ -302,14 +316,14 @@ configure = function(arg) {
         return memo;
       };
       injectionKeys = (function() {
-        var ref1, results;
+        var ref1, results1;
         ref1 = this.dependencies;
-        results = [];
+        results1 = [];
         for (key in ref1) {
           if (!hasProp.call(ref1, key)) continue;
-          results.push(key);
+          results1.push(key);
         }
-        return results;
+        return results1;
       }).call(this);
       injectionObject = injectionKeys.reduce(collectInjections, {});
       return injectionObject;
@@ -388,14 +402,17 @@ configure = function(arg) {
 
     Container.prototype.componentFactory = null;
 
+    Container.prototype.componentTimeout = null;
+
     function Container(props) {
-      var ref1, ref2, ref3;
+      var ref1, ref2, ref3, ref4;
       if (props == null) {
         props = {};
       }
       this.components = (ref1 = props.components) != null ? ref1 : Object.create(null);
       this.promises = (ref2 = props.promises) != null ? ref2 : Object.create(null);
       this.componentFactory = (ref3 = props.componentFactory) != null ? ref3 : new ComponentFactory();
+      this.componentTimeout = (ref4 = props.componentTimeout) != null ? ref4 : 30000;
     }
 
     Container.prototype.defineComponent = function() {
@@ -413,20 +430,29 @@ configure = function(arg) {
     Container.prototype.createComponentPromise = function(key) {
       return new Promise((function(_this) {
         return function(resolve, reject) {
-          var component, dependencyKeys;
+          var component, dependencyKeys, done, timeoutId;
+          done = function() {
+            var error, results;
+            error = arguments[0], results = 2 <= arguments.length ? slice.call(arguments, 1) : [];
+            if (typeof timeoutId !== "undefined" && timeoutId !== null) {
+              clearTimeout(timeoutId);
+            }
+            if (error != null) {
+              return reject(error);
+            } else {
+              return resolve.apply(null, results);
+            }
+          };
+          timeoutId = setTimeout(done.bind(null, ComponentTimedOut({
+            key: key
+          })), _this.componentTimeout);
           component = _this.components[key];
           dependencyKeys = component.getDependencyKeys();
           return Async.map(dependencyKeys, _this.resolveComponent.bind(_this), function(error, injections) {
             if (error != null) {
-              return reject(error);
+              return done(error);
             }
-            return component.inject(injections, function(error, result) {
-              if (error != null) {
-                return reject(error);
-              } else {
-                return resolve(result);
-              }
-            });
+            return component.inject(injections, done);
           });
         };
       })(this));
@@ -500,14 +526,14 @@ configure = function(arg) {
     };
 
     Container.prototype.validateComponents = function() {
-      var key, ref1, results;
+      var key, ref1, results1;
       ref1 = this.components;
-      results = [];
+      results1 = [];
       for (key in ref1) {
         if (!hasProp.call(ref1, key)) continue;
-        results.push(this.validateComponent(key));
+        results1.push(this.validateComponent(key));
       }
-      return results;
+      return results1;
     };
 
     Container.prototype.resolveComponent = function(key, done) {

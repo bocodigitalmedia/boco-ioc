@@ -22,6 +22,12 @@ configure = ({Async, Promise, Glob, Path, promiseCallback} = {}) ->
       @name = @constructor.name
       Error.captureStackTrace @, @constructor
 
+  class ComponentTimedOut extends Exception
+    constructor: (payload) ->
+      return new ComponentTimedOut payload unless @ instanceof ComponentTimedOut
+      super payload
+      @message = "Component '#{@payload.key}' timed out."
+
   class NotImplemented extends Exception
     constructor: (payload) ->
       return new NotImplemented payload unless @ instanceof NotImplemented
@@ -172,11 +178,13 @@ configure = ({Async, Promise, Glob, Path, promiseCallback} = {}) ->
     components: null
     promises: null
     componentFactory: null
+    componentTimeout: null
 
     constructor: (props = {}) ->
       @components = props.components ? Object.create(null)
       @promises = props.promises ? Object.create(null)
       @componentFactory = props.componentFactory ? new ComponentFactory()
+      @componentTimeout = props.componentTimeout ? 30000
 
     defineComponent: (key, args...) ->
       throw ComponentAlreadyDefined {key} if @components[key]?
@@ -185,14 +193,18 @@ configure = ({Async, Promise, Glob, Path, promiseCallback} = {}) ->
 
     createComponentPromise: (key) ->
       new Promise (resolve, reject) =>
+
+        done = (error, results...) ->
+          clearTimeout timeoutId if timeoutId?
+          if error? then reject(error) else resolve(results...)
+
+        timeoutId = setTimeout done.bind(null, ComponentTimedOut({key})), @componentTimeout
         component = @components[key]
         dependencyKeys = component.getDependencyKeys()
 
         Async.map dependencyKeys, @resolveComponent.bind(@), (error, injections) ->
-          return reject(error) if error?
-
-          component.inject injections, (error, result) ->
-            if error? then reject(error) else resolve(result)
+          return done error if error?
+          component.inject injections, done
 
     isComponentDefined: (key) ->
       @components[key]?
