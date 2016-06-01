@@ -275,7 +275,7 @@ configure = ({Async, Promise, Glob, Path, EventEmitter, promiseCallback} = {}) -
 
       unless @promises[key]
         try @validateComponent key
-        catch error then done error
+        catch error then return done error
         @promises[key] = @createComponentPromise key
 
       promiseCallback @promises[key], done
