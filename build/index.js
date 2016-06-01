@@ -587,7 +587,7 @@ configure = function(arg) {
           this.validateComponent(key);
         } catch (error1) {
           error = error1;
-          done(error);
+          return done(error);
         }
         this.promises[key] = this.createComponentPromise(key);
       }
